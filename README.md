@@ -187,17 +187,45 @@ These are defined in [.env.example](.env.example):
 
 | Variable | Purpose |
 | --- | --- |
-| `STARLING_ACCESS_TOKEN` | Starling API token for polling/links |
-| `STARLING_ACCOUNT_UID` | Starling account UID |
-| `STARLING_CATEGORY_UID` | Starling category UID |
-| `STARLING_SETTLE_UP_LINK` | Demo Settle Up link |
+| `OLLAMA_MODEL` | Local Ollama model, default `llama3.2:3b` |
+| `OLLAMA_BASE_URL` | Ollama server URL, default `http://localhost:11434` |
 | `TWILIO_ACCOUNT_SID` | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token |
 | `TWILIO_PHONE_NUMBER` | Twilio sender number |
 | `DEMO_SAM_PHONE_NUMBER` | Only real demo recipient |
-| `OLLAMA_MODEL` | Local Ollama model, default `llama3.2:3b` |
+| `STARLING_ACCESS_TOKEN` | Starling API token (read-only) |
+| `STARLING_ACCOUNT_UID` | Starling account UID |
+| `STARLING_CATEGORY_UID` | Starling category UID |
+| `STARLING_SETTLE_UP_LINK` | Pre-generated Settle Up link for demo |
+| `NEXT_PUBLIC_DEMO_BASE_URL` | Base URL for demo payment links, default `http://localhost:3000` |
 
-All integrations should degrade to local/template behavior when variables are missing.
+All integrations degrade to local/template behavior when variables are missing.
+
+## Integration Contracts
+
+### Twilio
+
+- Only `DEMO_SAM_PHONE_NUMBER` should receive real SMS or calls in demo mode.
+- Maximum 3 messages per debtor (`DEMO_MAX_MESSAGES_PER_DEBTOR`).
+- Maximum 1 call per debtor (`DEMO_MAX_CALLS_PER_DEBTOR`).
+- No abusive, threatening, or coercive content.
+- Do not represent PesterPay as a bank, regulator, court, solicitor, or debt collector.
+- Missing credentials fall back to a logged template event, leaving the demo running.
+
+### Starling
+
+- Read-only transaction polling for payment reconciliation only.
+- Never write payment data or move money through the Starling integration.
+- `STARLING_SETTLE_UP_LINK` is a pre-generated payment link — include it in messages.
+- Missing credentials fall back to the `/pay/[reference]` demo payment page.
+
+### Ollama
+
+- Generates SMS copy and voice call scripts only.
+- Must never decide payment status, state transitions, or debt closure.
+- Missing `OLLAMA_BASE_URL` falls back to `messageTemplates` automatically.
+
+These contracts are enforced by helper checks in `src/lib/demoSafety.ts`.
 
 ## Commands
 
@@ -209,8 +237,7 @@ Scripts currently available in [package.json](package.json):
 | `npm run build` | Build production app |
 | `npm run start` | Start production server after build |
 | `npm run lint` | Run ESLint |
-
-There is no test script yet. Add focused tests when implementing shared state-machine, payment, or parser logic.
+| `npm test` | Run unit tests (`src/**/*.test.ts`) |
 
 ## Multica Issue Guidance
 
