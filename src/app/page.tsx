@@ -104,6 +104,7 @@ function eventStatusInfo(type: EventLogEntry["eventType"]) {
   const map: Record<EventLogEntry["eventType"], { color: string; label: string }> = {
     EXPENSE_CREATED: { color: "text-[var(--pp-text-muted)]", label: "SYS:EXPENSE" },
     DEBTOR_CREATED: { color: "text-[var(--pp-text-muted)]", label: "SYS:CREATED" },
+    MESSAGE_GENERATED: { color: "text-[var(--pp-lime)]", label: "MSG:GENERATED" },
     SMS_1_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L1" },
     SMS_2_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L2" },
     CALL_TRIGGERED: { color: "text-[var(--pp-lime)]", label: "VOX:CALL_L3" },

@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import { listEvents, resetEvents } from "./events";
 import { agentTick } from "./agent";
+import { generateTemplateMessage, validateMessageSafety } from "./messageTemplates";
+import { generateAgentMessage } from "./ollama";
 import { createDebtor, listDebtors, listDemoPayments, listExpenses, resetDebtors, resetDemoPayments, resetExpenses, seedDemo } from "./store";
 import { reconcileDemoPayment, submitDemoPayment } from "./payments";
 import { transitionDebtor } from "./stateMachine";
@@ -31,7 +33,7 @@ describe("debtor state machine", () => {
     assert.equal(listEvents(debtor.id).at(-1)?.eventType, "STATE_TRANSITION_REJECTED");
   });
 
-  it("advances a debtor through deterministic chase states without closing payment", () => {
+  it("advances a debtor through deterministic chase states without closing payment", async () => {
     resetDebtors();
     resetExpenses();
     resetEvents();
@@ -45,7 +47,7 @@ describe("debtor state machine", () => {
 
     const states = [];
     for (let index = 0; index < 4; index += 1) {
-      const result = agentTick({ debtorId: debtor.id });
+      const result = await agentTick({ debtorId: debtor.id });
       assert.equal(result.ok, true);
       if (result.ok) {
         states.push(result.debtor?.state);
@@ -57,13 +59,99 @@ describe("debtor state machine", () => {
       listEvents(debtor.id).map((event) => event.eventType),
       [
         "DEBTOR_CREATED",
+        "MESSAGE_GENERATED",
         "SMS_1_SENT",
         "PAYMENT_CHECK_NO_MATCH",
+        "MESSAGE_GENERATED",
         "SMS_2_SENT",
         "PAYMENT_CHECK_NO_MATCH",
+        "MESSAGE_GENERATED",
         "CALL_TRIGGERED",
       ],
     );
+  });
+});
+
+describe("message generation", () => {
+  it("template fallback includes required payment details and stays SMS length", () => {
+    const { expense, debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const message = generateTemplateMessage({
+      debtor: sam,
+      expense,
+      policy: "unhinged_goblin",
+      paymentLink: "/pay/SAM-DISH-32",
+      escalationLevel: 1,
+    });
+
+    assert.equal(message.source, "template");
+    assert.equal(message.safety.valid, true);
+    assert.ok(message.body.length <= 280);
+    assert.match(message.body, /Sam/);
+    assert.match(message.body, /£32/);
+    assert.match(message.body, /Dinner at Dishoom/);
+    assert.match(message.body, /SAM-DISH-32/);
+    assert.match(message.body, /\/pay\/SAM-DISH-32/);
+  });
+
+  it("rejects unsafe generated copy that impersonates regulated collections", () => {
+    const { expense, debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const safety = validateMessageSafety(
+      "I am a debt collector bank. Pay £32 for Dinner at Dishoom with ref SAM-DISH-32 at /pay/SAM-DISH-32.",
+      {
+        debtor: sam,
+        expense,
+        paymentLink: "/pay/SAM-DISH-32",
+      },
+    );
+
+    assert.equal(safety.valid, false);
+    assert.ok(safety.reasons.some((reason) => reason.includes("unsafe")));
+  });
+
+  it("falls back to templates when Ollama is unavailable", async () => {
+    const { expense, debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const message = await generateAgentMessage(
+      {
+        debtor: sam,
+        expense,
+        paymentLink: "/pay/SAM-DISH-32",
+        policy: "polite_british",
+      },
+      {
+        ollamaUrl: "http://127.0.0.1:9",
+        timeoutMs: 25,
+      },
+    );
+
+    assert.equal(message.source, "template");
+    assert.equal(message.safety.valid, true);
+    assert.match(message.body, /£32/);
+    assert.match(message.body, /Dinner at Dishoom/);
+    assert.match(message.body, /SAM-DISH-32/);
+  });
+
+  it("agent tick logs generated copy before deterministic state transition", async () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const result = await agentTick({ debtorId: sam.id, policy: "corporate_collections" });
+    assert.equal(result.ok, true);
+    assert.equal(result.ok ? result.generatedMessage?.includes("SAM-DISH-32") : false, true);
+
+    const events = listEvents(sam.id);
+    assert.equal(events.at(-2)?.eventType, "MESSAGE_GENERATED");
+    assert.equal(events.at(-1)?.eventType, "SMS_1_SENT");
+    assert.equal(events.at(-2)?.metadata?.policy, "corporate_collections");
   });
 });
 
@@ -95,11 +183,11 @@ describe("seed demo", () => {
     assert.equal(listDebtors().length, 3);
   });
 
-  it("seeding after partial tick progress resets to clean state", () => {
+  it("seeding after partial tick progress resets to clean state", async () => {
     const { debtors: initialDebtors } = seedDemo();
 
-    agentTick({ debtorId: initialDebtors[0].id });
-    agentTick({ debtorId: initialDebtors[0].id });
+    await agentTick({ debtorId: initialDebtors[0].id });
+    await agentTick({ debtorId: initialDebtors[0].id });
 
     const { debtors: freshDebtors } = seedDemo();
 
@@ -164,7 +252,7 @@ describe("reset demo", () => {
 });
 
 describe("agent tick reliability", () => {
-  it("does not advance closed debtors", () => {
+  it("does not advance closed debtors", async () => {
     resetDebtors();
     resetExpenses();
     resetEvents();
@@ -183,14 +271,14 @@ describe("agent tick reliability", () => {
     assert.equal(payment.ok, true);
 
     for (let i = 0; i < 2; i++) {
-      agentTick({ debtorId: debtor.id });
+      await agentTick({ debtorId: debtor.id });
     }
 
     const closedDebtor = listDebtors().find((d) => d.id === debtor.id);
     assert.equal(closedDebtor?.state, "closed");
 
     const eventCountBeforeExtraTick = listEvents(debtor.id).length;
-    const result = agentTick({ debtorId: debtor.id });
+    const result = await agentTick({ debtorId: debtor.id });
 
     assert.equal(result.ok, true);
     if (result.ok) {
@@ -199,16 +287,16 @@ describe("agent tick reliability", () => {
     assert.equal(listEvents(debtor.id).length, eventCountBeforeExtraTick);
   });
 
-  it("returns ok: false when debtorId is specified but not found", () => {
+  it("returns ok: false when debtorId is specified but not found", async () => {
     resetDebtors();
     resetExpenses();
     resetEvents();
 
-    const result = agentTick({ debtorId: "non-existent-id" });
+    const result = await agentTick({ debtorId: "non-existent-id" });
     assert.equal(result.ok, false);
   });
 
-  it("returns ok: true with resolved message when all debtors are closed", () => {
+  it("returns ok: true with resolved message when all debtors are closed", async () => {
     resetDebtors();
     resetExpenses();
     resetEvents();
@@ -226,18 +314,18 @@ describe("agent tick reliability", () => {
     });
     assert.equal(payment.ok, true);
 
-    const result = agentTick();
+    const result = await agentTick();
     assert.equal(result.ok, true);
     assert.ok(result.message.includes("resolved"));
   });
 
-  it("tick advances exactly one debtor per call when multiple are advanceable", () => {
+  it("tick advances exactly one debtor per call when multiple are advanceable", async () => {
     const { debtors } = seedDemo();
 
     const stateBefore = debtors.map((d) => d.state);
     assert.deepEqual(stateBefore, ["created", "created", "created"]);
 
-    agentTick();
+    await agentTick();
 
     const stateAfter = listDebtors().map((d) => d.state);
     const advancedCount = stateAfter.filter((s) => s !== "created").length;

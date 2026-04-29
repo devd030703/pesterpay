@@ -47,6 +47,7 @@ export type DemoPayment = {
 export const eventTypes = [
   "EXPENSE_CREATED",
   "DEBTOR_CREATED",
+  "MESSAGE_GENERATED",
   "SMS_1_SENT",
   "SMS_2_SENT",
   "CALL_TRIGGERED",

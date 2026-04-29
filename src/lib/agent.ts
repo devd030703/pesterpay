@@ -1,6 +1,8 @@
 import { listEvents, logEvent } from "./events";
+import { buildDemoPaymentLink, type MessagePolicy } from "./messageTemplates";
 import type { Debtor, DebtorState } from "./models";
-import { getDebtor, listDebtors, saveDebtor } from "./store";
+import { getDebtor, getExpense, listDebtors, saveDebtor } from "./store";
+import { generateAgentMessage } from "./ollama";
 import { transitionDebtor } from "./stateMachine";
 
 const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
@@ -11,6 +13,7 @@ const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
 
 export type AgentTickInput = {
   debtorId?: string;
+  policy?: MessagePolicy;
 };
 
 export type AgentTickResult =
@@ -19,13 +22,14 @@ export type AgentTickResult =
       debtor?: Debtor;
       advanced?: boolean;
       message: string;
+      generatedMessage?: string;
     }
   | {
       ok: false;
       message: string;
     };
 
-export function agentTick(input: AgentTickInput = {}): AgentTickResult {
+export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickResult> {
   const debtors = listDebtors();
 
   if (debtors.length === 0) {
@@ -70,6 +74,30 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     });
   }
 
+  const expense = getExpense(debtor.expenseId);
+  const generated = await generateAgentMessage({
+    debtor,
+    expense,
+    escalationLevel: to === "sms_1_sent" ? 1 : to === "sms_2_sent" ? 2 : to === "call_triggered" ? 3 : debtor.escalationLevel,
+    paymentLink: buildDemoPaymentLink(debtor.paymentReference),
+    policy: input.policy,
+    channel: to === "call_triggered" ? "call_script" : "sms",
+  });
+
+  logEvent({
+    entityType: "debtor",
+    entityId: debtor.id,
+    eventType: "MESSAGE_GENERATED",
+    message: generated.body,
+    metadata: {
+      source: generated.source,
+      policy: generated.policy,
+      channel: generated.channel,
+      escalationLevel: generated.escalationLevel,
+      safetyValid: generated.safety.valid,
+    },
+  });
+
   const result = transitionDebtor({
     debtor,
     to,
@@ -77,6 +105,7 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     metadata: {
       actor: "deterministic_agent_tick",
       eventCountBeforeTick: listEvents(debtor.id).length,
+      messageSource: generated.source,
     },
   });
 
@@ -93,6 +122,7 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     ok: true,
     debtor: result.debtor,
     advanced: true,
+    generatedMessage: generated.body,
     message: `Advanced debtor ${debtor.id} from ${debtor.state} to ${to}.`,
   };
 }
