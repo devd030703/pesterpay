@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { listEvents, resetEvents } from "./events";
 import { agentTick } from "./agent";
-import { createDebtor, listDebtors, listExpenses, resetDebtors, resetExpenses, seedDemo } from "./store";
+import { createDebtor, listDebtors, listDemoPayments, listExpenses, resetDebtors, resetDemoPayments, resetExpenses, seedDemo } from "./store";
 import { reconcileDemoPayment, submitDemoPayment } from "./payments";
 import { transitionDebtor } from "./stateMachine";
 
@@ -130,7 +130,7 @@ describe("seed demo", () => {
 });
 
 describe("reset demo", () => {
-  it("clears all debtors, expenses, and events", () => {
+  it("clears all debtors, expenses, events, and payments", () => {
     seedDemo();
     assert.ok(listDebtors().length > 0);
     assert.ok(listExpenses().length > 0);
@@ -138,11 +138,13 @@ describe("reset demo", () => {
 
     resetDebtors();
     resetExpenses();
+    resetDemoPayments();
     resetEvents();
 
     assert.equal(listDebtors().length, 0);
     assert.equal(listExpenses().length, 0);
     assert.equal(listEvents().length, 0);
+    assert.equal(listDemoPayments().length, 0);
   });
 
   it("re-seeding after reset produces a clean canonical scenario", () => {
@@ -306,5 +308,61 @@ describe("payment reconciliation", () => {
 
     assert.equal(match.confidence, 60);
     assert.equal(match.outcome, "probable_match");
+  });
+
+  it("wrong reference and wrong amount scores no_match", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const match = reconcileDemoPayment(sam, {
+      id: "payment-2",
+      debtorId: sam.id,
+      reference: "WRONG-REF",
+      amountCents: 100,
+      currency: "GBP",
+      direction: "incoming",
+      createdAt: new Date().toISOString(),
+    });
+
+    assert.equal(match.outcome, "no_match");
+    assert.ok(match.confidence < 50);
+  });
+
+  it("outgoing exact payment does not close the debtor", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const result = submitDemoPayment({
+      reference: "SAM-DISH-32",
+      amountCents: 3200,
+      direction: "outgoing",
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+
+    assert.notEqual(result.match.outcome, "matched");
+    assert.notEqual(result.debtor.state, "closed");
+  });
+
+  it("second exact payment to a closed debtor does not double-close", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const first = submitDemoPayment({ reference: "SAM-DISH-32", amountCents: 3200 });
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.equal(first.debtor.state, "closed");
+
+    const eventCountAfterFirst = listEvents(sam.id).length;
+
+    const second = submitDemoPayment({ reference: "SAM-DISH-32", amountCents: 3200 });
+    assert.equal(second.ok, true);
+    if (!second.ok) return;
+    assert.equal(second.debtor.state, "closed");
+    assert.equal(listEvents(sam.id).length, eventCountAfterFirst + 2);
   });
 });

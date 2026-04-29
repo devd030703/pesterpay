@@ -39,7 +39,7 @@ export type SubmitDemoPaymentResult =
     };
 
 function formatPounds(cents: number): string {
-  return `£${cents / 100}`;
+  return `£${(cents / 100).toFixed(2)}`;
 }
 
 export function reconcileDemoPayment(debtor: Debtor, payment: DemoPayment): PaymentMatchResult {
@@ -86,6 +86,15 @@ export function reconcileDemoPayment(debtor: Debtor, payment: DemoPayment): Paym
       confidence,
       outcome: "partial_wrong_amount",
       reason: "Reference matched but amount was different, so the debt remains open.",
+      signals,
+    };
+  }
+
+  if (!incomingPayment && confidence >= 80) {
+    return {
+      confidence,
+      outcome: "probable_match",
+      reason: "High confidence but payment direction is outgoing. Manual review required.",
       signals,
     };
   }
@@ -204,7 +213,7 @@ export function submitDemoPayment(input: SubmitDemoPaymentInput): SubmitDemoPaym
     });
   }
 
-  if (match.outcome !== "matched" || debtor.state === "closed") {
+  if (match.outcome !== "matched" || debtor.state === "closed" || debtor.state === "payment_matched") {
     return { ok: true, debtor, payment, match };
   }
 
