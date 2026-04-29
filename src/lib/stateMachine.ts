@@ -86,6 +86,8 @@ export function transitionDebtor(input: TransitionDebtorInput): TransitionResult
   const nextDebtor: Debtor = {
     ...debtor,
     state: to,
+    escalationLevel:
+      to === "sms_1_sent" ? 1 : to === "sms_2_sent" ? 2 : to === "call_triggered" ? 3 : debtor.escalationLevel,
     updatedAt: new Date().toISOString(),
   };
 

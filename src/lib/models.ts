@@ -18,6 +18,8 @@ export type Debtor = {
   phone: string;
   amountCents: number;
   currency: "GBP" | "USD";
+  paymentReference: string;
+  escalationLevel: number;
   state: DebtorState;
   createdAt: string;
   updatedAt: string;
@@ -47,4 +49,3 @@ export type EventLogEntry = {
   metadata?: Record<string, unknown>;
   createdAt: string;
 };
-

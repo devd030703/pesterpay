@@ -61,7 +61,9 @@ describe("debtor state machine", () => {
       [
         "DEBTOR_CREATED",
         "SMS_1_SENT",
+        "PAYMENT_CHECK_NO_MATCH",
         "SMS_2_SENT",
+        "PAYMENT_CHECK_NO_MATCH",
         "CALL_TRIGGERED",
         "PAYMENT_MATCHED",
         "DEBT_CLOSED",

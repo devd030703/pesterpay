@@ -1,4 +1,4 @@
-import { listEvents } from "./events";
+import { listEvents, logEvent } from "./events";
 import type { Debtor, DebtorState } from "./models";
 import { getDebtor, listDebtors, saveDebtor, seedDemoDebtors } from "./store";
 import { transitionDebtor } from "./stateMachine";
@@ -55,6 +55,20 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     };
   }
 
+  if (debtor.state === "sms_1_sent" || debtor.state === "sms_2_sent") {
+    logEvent({
+      entityType: "debtor",
+      entityId: debtor.id,
+      eventType: "PAYMENT_CHECK_NO_MATCH",
+      message: `Payment checked for ${debtor.paymentReference}; no matching transaction found.`,
+      metadata: {
+        reference: debtor.paymentReference,
+        amountCents: debtor.amountCents,
+        reason: "agent_tick",
+      },
+    });
+  }
+
   const result = transitionDebtor({
     debtor,
     to,
@@ -81,4 +95,3 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     message: `Advanced debtor ${debtor.id} from ${debtor.state} to ${to}.`,
   };
 }
-

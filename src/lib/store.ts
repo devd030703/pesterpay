@@ -10,7 +10,12 @@ export type CreateDebtorInput = {
   phone: string;
   amountCents: number;
   currency?: Debtor["currency"];
+  paymentReference?: string;
 };
+
+function createPaymentReference(name: string, amountCents: number): string {
+  return `${name.toUpperCase()}-DISH-${amountCents / 100}`;
+}
 
 export function createDebtor(input: CreateDebtorInput): Debtor {
   const now = new Date().toISOString();
@@ -21,6 +26,8 @@ export function createDebtor(input: CreateDebtorInput): Debtor {
     phone: input.phone,
     amountCents: input.amountCents,
     currency: input.currency ?? "GBP",
+    paymentReference: input.paymentReference ?? createPaymentReference(input.name, input.amountCents),
+    escalationLevel: 0,
     state: "created",
     createdAt: now,
     updatedAt: now,
@@ -36,6 +43,7 @@ export function createDebtor(input: CreateDebtorInput): Debtor {
       expenseId: debtor.expenseId,
       amountCents: debtor.amountCents,
       currency: debtor.currency,
+      paymentReference: debtor.paymentReference,
     },
   });
 
@@ -72,19 +80,21 @@ export function seedDemoDebtors(): Debtor[] {
       name: "Sam",
       phone: "+447700900111",
       amountCents: 3200,
+      paymentReference: "SAM-DISH-32",
     }),
     createDebtor({
       expenseId,
       name: "Lucia",
       phone: "+447700900112",
       amountCents: 3200,
+      paymentReference: "LUCIA-DISH-32",
     }),
     createDebtor({
       expenseId,
       name: "Hamza",
       phone: "+447700900113",
       amountCents: 3200,
+      paymentReference: "HAMZA-DISH-32",
     }),
   ];
 }
-
