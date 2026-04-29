@@ -51,9 +51,8 @@ Use available scripts:
 ```bash
 npm run lint
 npm run build
+npm test
 ```
-
-There is no test script yet. Add one when adding tests.
 
 Manual demo script:
 

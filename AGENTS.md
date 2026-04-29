@@ -117,11 +117,39 @@ Do not represent PesterPay as a bank, regulator, solicitor, court, or legal debt
 ## Demo Rails
 
 - Demo recipient should be Sam only.
-- Max messages per debtor in demo: 3.
-- Max calls per debtor in demo: 1.
+- Max messages per debtor in demo: 3 (`DEMO_MAX_MESSAGES_PER_DEBTOR` in `src/lib/demoSafety.ts`).
+- Max calls per debtor in demo: 1 (`DEMO_MAX_CALLS_PER_DEBTOR` in `src/lib/demoSafety.ts`).
 - Integrations must fail soft and leave the demo usable.
 - Add seed/reset demo endpoints.
 - Prefer in-memory/local JSON storage until the loop works.
+
+## Integration Contracts
+
+Use `src/lib/demoSafety.ts` helpers in integration routes:
+
+- `isTwilioConfigured()` — use to decide live SMS/call vs. template fallback.
+- `isOllamaConfigured()` — use to decide LLM copy generation vs. template fallback.
+- `isStarlingConfigured()` — use to decide live polling vs. demo payment fallback.
+
+### Twilio contract
+
+- Only `DEMO_SAM_PHONE_NUMBER` receives real messages or calls.
+- Never exceed `DEMO_MAX_MESSAGES_PER_DEBTOR` or `DEMO_MAX_CALLS_PER_DEBTOR`.
+- Content must not be abusive, threatening, or coercive.
+- Do not represent PesterPay as a bank, regulator, court, solicitor, or debt collector.
+- When `isTwilioConfigured()` is false, log a fallback event and continue.
+
+### Starling contract
+
+- Read-only access only (transaction polling for reconciliation).
+- Never write payment data or initiate money movement.
+- When `isStarlingConfigured()` is false, direct users to `/pay/[reference]`.
+
+### Ollama contract
+
+- Copy generation only (SMS messages and voice scripts).
+- Never allow Ollama output to trigger state transitions or close debts.
+- When `isOllamaConfigured()` is false, fall back to `messageTemplates`.
 
 ## Priority Order
 
@@ -183,9 +211,8 @@ Use real package scripts only:
 ```bash
 npm run lint
 npm run build
+npm test
 ```
-
-There is no test script yet. If you add tests, add a package script and document it.
 
 Manual demo verification:
 
