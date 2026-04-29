@@ -1,6 +1,6 @@
 import { listEvents, logEvent } from "./events";
 import type { Debtor, DebtorState } from "./models";
-import { getDebtor, listDebtors, saveDebtor, seedDemoDebtors } from "./store";
+import { getDebtor, listDebtors, saveDebtor } from "./store";
 import { transitionDebtor } from "./stateMachine";
 
 const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
@@ -18,8 +18,8 @@ export type AgentTickInput = {
 export type AgentTickResult =
   | {
       ok: true;
-      debtor: Debtor;
-      advanced: boolean;
+      debtor?: Debtor;
+      advanced?: boolean;
       message: string;
     }
   | {
@@ -28,20 +28,23 @@ export type AgentTickResult =
     };
 
 export function agentTick(input: AgentTickInput = {}): AgentTickResult {
-  if (listDebtors().length === 0) {
-    seedDemoDebtors();
+  const debtors = listDebtors();
+
+  if (debtors.length === 0) {
+    return {
+      ok: false,
+      message: "No debtors found. Please seed demo data first.",
+    };
   }
 
   const debtor = input.debtorId
     ? getDebtor(input.debtorId)
-    : listDebtors().find((candidate) => coreDemoAdvance[candidate.state]);
+    : debtors.find((candidate) => coreDemoAdvance[candidate.state]);
 
   if (!debtor) {
     return {
-      ok: false,
-      message: input.debtorId
-        ? "Debtor not found."
-        : "No debtor is ready for deterministic demo advancement.",
+      ok: true,
+      message: "All debts are successfully resolved.",
     };
   }
 

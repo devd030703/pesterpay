@@ -100,6 +100,23 @@ function metadataRows(metadata?: Record<string, unknown>) {
   return Object.entries(metadata).filter(([, value]) => value !== undefined && value !== null);
 }
 
+function eventStatusInfo(type: EventLogEntry["eventType"]) {
+  const map: Record<EventLogEntry["eventType"], { color: string; label: string }> = {
+    DEBTOR_CREATED: { color: "text-[var(--pp-text-muted)]", label: "INIT" },
+    SMS_1_SENT: { color: "text-[var(--pp-amber)]", label: "SMS" },
+    SMS_2_SENT: { color: "text-[var(--pp-amber)]", label: "SMS" },
+    CALL_TRIGGERED: { color: "text-[var(--pp-lime)]", label: "VOX" },
+    PAYMENT_CHECK_NO_MATCH: { color: "text-[var(--pp-text-dim)]", label: "SCAN" },
+    PAYMENT_MATCHED: { color: "text-[var(--pp-green)]", label: "MATCH" },
+    DEBT_CLOSED: { color: "text-[var(--pp-green)]", label: "DONE" },
+    DEBTOR_PAUSED: { color: "text-[var(--pp-text-dim)]", label: "PAUSE" },
+    DEBTOR_DISPUTED: { color: "text-[var(--pp-red)]", label: "HALT" },
+    STATE_TRANSITION_REJECTED: { color: "text-[var(--pp-red)]", label: "FAIL" },
+  };
+
+  return map[type] ?? { color: "text-[var(--pp-text)]", label: "EVENT" };
+}
+
 export default function Home() {
   const [demoState, setDemoState] = useState<DemoState>({ debtors: [], events: [] });
   const [runningAction, setRunningAction] = useState<DemoAction | null>(null);
@@ -193,8 +210,8 @@ export default function Home() {
       <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[320px_1fr]">
         <section className="border border-[var(--pp-border)] bg-[var(--pp-panel)] p-4">
           <div className="mb-5">
-            <p className="text-xs uppercase text-[var(--pp-text-dim)]">PesterPay</p>
-            <h1 className="mt-2 text-2xl font-semibold">Debt operations console</h1>
+            <p className="text-xs uppercase text-[var(--pp-text-dim)]">PesterPay AI</p>
+            <h1 className="mt-2 text-2xl font-semibold">Social Debt Agent Console</h1>
           </div>
 
           <div className="space-y-2">
@@ -221,7 +238,8 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="mt-5 border border-[var(--pp-border)] p-3 text-sm text-[var(--pp-text-muted)]">
+          <div className="mt-5 border border-[var(--pp-border-strong)] bg-[var(--pp-bg-soft)] p-3 text-sm text-[var(--pp-lime)]">
+            <div className="mb-1 text-[10px] uppercase text-[var(--pp-text-dim)]">Agent Status</div>
             {notice}
           </div>
 
@@ -243,6 +261,21 @@ export default function Home() {
               <p className="mt-2 text-xl">{sortedEvents.length}</p>
             </div>
           </div>
+
+          {currentExpenseActive && (
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-xs text-[var(--pp-text-dim)] uppercase">
+                <span>Recovery progress</span>
+                <span>{Math.round(((expense.totalCents - activeDebtCents) / expense.totalCents) * 100)}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-[var(--pp-border)]">
+                <div
+                  className="h-full bg-[var(--pp-green)] transition-all duration-500"
+                  style={{ width: `${Math.round(((expense.totalCents - activeDebtCents) / expense.totalCents) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="grid gap-4">
@@ -251,12 +284,12 @@ export default function Home() {
               <div>
                 <p className="text-xs uppercase text-[var(--pp-text-dim)]">Expense summary</p>
                 <h2 className="mt-2 text-2xl font-semibold">
-                  {currentExpenseActive ? expense.title : "No expense loaded"}
+                  {currentExpenseActive ? expense.title : "No active demo"}
                 </h2>
                 <p className="mt-2 text-sm text-[var(--pp-text-muted)]">
                   {currentExpenseActive
                     ? `Paid by ${expense.paidBy}. Split across ${demoState.debtors.length} debtors.`
-                    : "Seed the demo to create Dinner at Dishoom."}
+                    : "Start the demo by clicking 'Seed Demo Data' to create the Dinner at Dishoom expense."}
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
@@ -280,7 +313,7 @@ export default function Home() {
             <section className="border border-[var(--pp-border)] bg-[var(--pp-panel)] p-4">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Debtor cards</h2>
-                <p className="text-xs uppercase text-[var(--pp-text-dim)]">Deterministic state machine</p>
+                <p className="text-xs uppercase text-[var(--pp-text-dim)]">Core Agent Workflow Policy</p>
               </div>
 
               {demoState.debtors.length === 0 ? (
@@ -310,7 +343,9 @@ export default function Home() {
                         </div>
                         <div className="flex justify-between gap-3 border-t border-[var(--pp-border)] pt-3">
                           <dt>Escalation level</dt>
-                          <dd className="text-right text-[var(--pp-text)]">{debtor.escalationLevel}</dd>
+                          <dd className="text-right text-[var(--pp-text)]">
+                            {debtor.escalationLevel === 0 ? "None" : `Level ${debtor.escalationLevel}`}
+                          </dd>
                         </div>
                         <div className="flex justify-between gap-3 border-t border-[var(--pp-border)] pt-3">
                           <dt>Last contacted</dt>
@@ -345,14 +380,15 @@ export default function Home() {
                 ) : (
                   sortedEvents.map((event) => {
                     const debtor = demoState.debtors.find((candidate) => candidate.id === event.entityId);
+                    const info = eventStatusInfo(event.eventType);
 
                     return (
                       <article key={event.id} className="border-l border-[var(--pp-border-strong)] pl-3">
                         <div className="border border-[var(--pp-border)] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs text-[var(--pp-text-dim)]">{formatTime(event.createdAt)}</p>
-                            <p className="border border-[var(--pp-border-strong)] px-2 py-1 text-xs text-[var(--pp-lime)]">
-                              {event.eventType}
+                            <p className={`border border-[var(--pp-border-strong)] px-2 py-1 text-xs ${info.color}`}>
+                              {info.label}
                             </p>
                           </div>
                           <p className="mt-3 text-sm">{event.message}</p>
