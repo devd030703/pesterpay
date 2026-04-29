@@ -64,26 +64,26 @@ export function seedDemoDebtors(): Debtor[] {
     return listDebtors();
   }
 
-  const expenseId = `demo-expense-${nanoid(6)}`;
+  const expenseId = `demo-dishoom-${nanoid(6)}`;
 
   return [
     createDebtor({
       expenseId,
-      name: "Maya",
-      phone: "+447700900101",
-      amountCents: 1850,
+      name: "Sam",
+      phone: "+447700900111",
+      amountCents: 3200,
     }),
     createDebtor({
       expenseId,
-      name: "Ollie",
-      phone: "+447700900102",
-      amountCents: 1850,
+      name: "Lucia",
+      phone: "+447700900112",
+      amountCents: 3200,
     }),
     createDebtor({
       expenseId,
-      name: "Priya",
-      phone: "+447700900103",
-      amountCents: 1850,
+      name: "Hamza",
+      phone: "+447700900113",
+      amountCents: 3200,
     }),
   ];
 }

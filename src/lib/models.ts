@@ -28,6 +28,7 @@ export const eventTypes = [
   "SMS_1_SENT",
   "SMS_2_SENT",
   "CALL_TRIGGERED",
+  "PAYMENT_CHECK_NO_MATCH",
   "PAYMENT_MATCHED",
   "DEBT_CLOSED",
   "DEBTOR_PAUSED",
