@@ -5,13 +5,29 @@ import type { MessageGenerationInput } from "./messageTemplates";
 
 describe("generateAgentMessage", () => {
   let originalFetch: typeof global.fetch;
+  let originalOllamaModel: string | undefined;
+  let originalOllamaBaseUrl: string | undefined;
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    originalOllamaModel = process.env.OLLAMA_MODEL;
+    originalOllamaBaseUrl = process.env.OLLAMA_BASE_URL;
+    delete process.env.OLLAMA_MODEL;
+    delete process.env.OLLAMA_BASE_URL;
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    if (originalOllamaModel === undefined) {
+      delete process.env.OLLAMA_MODEL;
+    } else {
+      process.env.OLLAMA_MODEL = originalOllamaModel;
+    }
+    if (originalOllamaBaseUrl === undefined) {
+      delete process.env.OLLAMA_BASE_URL;
+    } else {
+      process.env.OLLAMA_BASE_URL = originalOllamaBaseUrl;
+    }
   });
 
   const baseInput: MessageGenerationInput = {
@@ -57,10 +73,36 @@ describe("generateAgentMessage", () => {
     const result = await generateAgentMessage(baseInput);
 
     assert.equal(result.source, "ollama");
+    assert.equal((requestBody as { think?: unknown }).think, false);
     assert.deepEqual((requestBody as { options?: unknown }).options, {
       temperature: 0.4,
       num_predict: 1000,
     });
+  });
+
+  it("uses OLLAMA_MODEL and OLLAMA_BASE_URL when callers do not pass options", async () => {
+    process.env.OLLAMA_MODEL = "qwen3.5:9b";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+
+    let requestUrl = "";
+    let requestBody: unknown;
+    global.fetch = async (input, init) => {
+      requestUrl = String(input);
+      requestBody = JSON.parse(String(init?.body));
+
+      return {
+        ok: true,
+        json: async () => ({
+          response: "Hey Sam! You owe £32.00 for Dinner at Dishoom. Ref: SAM-DISH-32. Pay: /pay/SAM-DISH-32",
+        }),
+      } as Response;
+    };
+
+    const result = await generateAgentMessage(baseInput);
+
+    assert.equal(result.source, "ollama");
+    assert.equal(requestUrl, "http://localhost:11434/api/generate");
+    assert.equal((requestBody as { model?: unknown }).model, "qwen3.5:9b");
   });
 
   it("allows callers to override the default Ollama timeout", async () => {

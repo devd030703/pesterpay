@@ -22,7 +22,7 @@ function buildPrompt(input: MessageGenerationInput, fallback: GeneratedMessage):
   const link = input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`;
 
   return [
-    "Write one safe SMS-style repayment reminder for PesterPay. The tone should be funny, mildly chaotic, and highly pressuring, like a cheeky but relentlessly persistent friend.",
+    "Write one safe SMS-style repayment reminder for PesterPay. The tone should be chaotic, and highly pressuring, like a cheeky but relentlessly persistent friend.",
     "The deterministic state machine already decided this message should exist.",
     "Do not decide payment status, escalation, closure, or whether to send.",
     "Return ONLY the WhatsApp/SMS message body.",
@@ -32,7 +32,6 @@ function buildPrompt(input: MessageGenerationInput, fallback: GeneratedMessage):
     "Must include the exact expense name.",
     "Must include the exact payment reference.",
     "Must include the exact payment link.",
-    "Avoid threats, harassment, blackmail, slurs, legal claims, public shaming, and impersonating a bank, regulator, solicitor, or debt collector.",
     `Debtor: ${input.debtor.name}`,
     `Amount: ${amount}`,
     `Expense: ${expenseName}`,
@@ -46,6 +45,14 @@ function buildPrompt(input: MessageGenerationInput, fallback: GeneratedMessage):
 
 type FetchOllamaResult = { ok: true; body: string } | { ok: false; reason: "ollama_unavailable" | "timeout" };
 
+function resolveOllamaUrl(options: GenerateAgentMessageOptions): string {
+  return options.ollamaUrl ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
+}
+
+function resolveOllamaModel(options: GenerateAgentMessageOptions): string {
+  return options.model ?? process.env.OLLAMA_MODEL ?? "llama3.2:3b";
+}
+
 async function fetchOllamaMessage(
   input: MessageGenerationInput,
   fallback: GeneratedMessage,
@@ -55,13 +62,14 @@ async function fetchOllamaMessage(
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 120000);
 
   try {
-    const response = await fetch(`${options.ollamaUrl ?? "http://127.0.0.1:11434"}/api/generate`, {
+    const response = await fetch(`${resolveOllamaUrl(options)}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: options.model ?? "llama3.2",
+        model: resolveOllamaModel(options),
         prompt: buildPrompt(input, fallback),
         stream: false,
+        think: false,
         options: {
           temperature: 0.4,
           num_predict: 1000,
