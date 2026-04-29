@@ -1,9 +1,10 @@
 import { nanoid } from "nanoid";
 import { logEvent, resetEvents } from "./events";
-import type { Debtor, Expense } from "./models";
+import type { Debtor, DemoPayment, Expense } from "./models";
 
 const debtors = new Map<string, Debtor>();
 const expenses = new Map<string, Expense>();
+const payments = new Map<string, DemoPayment>();
 
 export type CreateDebtorInput = {
   expenseId: string;
@@ -53,6 +54,11 @@ export function createDebtor(input: CreateDebtorInput): Debtor {
 
 export function getDebtor(id: string): Debtor | undefined {
   return debtors.get(id);
+}
+
+export function getDebtorByPaymentReference(reference: string): Debtor | undefined {
+  const normalizedReference = reference.toUpperCase();
+  return [...debtors.values()].find((debtor) => debtor.paymentReference.toUpperCase() === normalizedReference);
 }
 
 export function listDebtors(): Debtor[] {
@@ -106,8 +112,44 @@ export function listExpenses(): Expense[] {
   return [...expenses.values()];
 }
 
+export function getExpense(id: string): Expense | undefined {
+  return expenses.get(id);
+}
+
 export function resetExpenses(): void {
   expenses.clear();
+}
+
+export type CreateDemoPaymentInput = {
+  debtorId: string;
+  reference: string;
+  amountCents: number;
+  currency?: DemoPayment["currency"];
+  direction?: DemoPayment["direction"];
+  createdAt?: string;
+};
+
+export function createDemoPayment(input: CreateDemoPaymentInput): DemoPayment {
+  const payment: DemoPayment = {
+    id: nanoid(),
+    debtorId: input.debtorId,
+    reference: input.reference,
+    amountCents: input.amountCents,
+    currency: input.currency ?? "GBP",
+    direction: input.direction ?? "incoming",
+    createdAt: input.createdAt ?? new Date().toISOString(),
+  };
+
+  payments.set(payment.id, payment);
+  return payment;
+}
+
+export function listDemoPayments(): DemoPayment[] {
+  return [...payments.values()];
+}
+
+export function resetDemoPayments(): void {
+  payments.clear();
 }
 
 export type SeedDemoResult = {
@@ -122,6 +164,7 @@ export type SeedDemoResult = {
 export function seedDemo(): SeedDemoResult {
   resetDebtors();
   resetExpenses();
+  resetDemoPayments();
   resetEvents();
 
   const expense = createExpense({

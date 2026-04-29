@@ -34,13 +34,27 @@ export type Debtor = {
   updatedAt: string;
 };
 
+export type DemoPayment = {
+  id: string;
+  debtorId: string;
+  reference: string;
+  amountCents: number;
+  currency: "GBP" | "USD";
+  direction: "incoming" | "outgoing";
+  createdAt: string;
+};
+
 export const eventTypes = [
   "EXPENSE_CREATED",
   "DEBTOR_CREATED",
   "SMS_1_SENT",
   "SMS_2_SENT",
   "CALL_TRIGGERED",
+  "PAYMENT_SUBMITTED",
+  "PAYMENT_CHECKED",
   "PAYMENT_CHECK_NO_MATCH",
+  "PAYMENT_PARTIAL_WRONG_AMOUNT",
+  "PAYMENT_PROBABLE_MATCH",
   "PAYMENT_MATCHED",
   "DEBT_CLOSED",
   "DEBTOR_PAUSED",

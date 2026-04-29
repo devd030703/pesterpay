@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { listEvents, resetEvents } from "./events";
 import { agentTick } from "./agent";
 import { createDebtor, listDebtors, listExpenses, resetDebtors, resetExpenses, seedDemo } from "./store";
+import { reconcileDemoPayment, submitDemoPayment } from "./payments";
 import { transitionDebtor } from "./stateMachine";
 
 describe("debtor state machine", () => {
@@ -30,7 +31,7 @@ describe("debtor state machine", () => {
     assert.equal(listEvents(debtor.id).at(-1)?.eventType, "STATE_TRANSITION_REJECTED");
   });
 
-  it("advances a debtor through the deterministic demo lifecycle", () => {
+  it("advances a debtor through deterministic chase states without closing payment", () => {
     resetDebtors();
     resetExpenses();
     resetEvents();
@@ -43,7 +44,7 @@ describe("debtor state machine", () => {
     });
 
     const states = [];
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       const result = agentTick({ debtorId: debtor.id });
       assert.equal(result.ok, true);
       if (result.ok) {
@@ -51,13 +52,7 @@ describe("debtor state machine", () => {
       }
     }
 
-    assert.deepEqual(states, [
-      "sms_1_sent",
-      "sms_2_sent",
-      "call_triggered",
-      "payment_matched",
-      "closed",
-    ]);
+    assert.deepEqual(states, ["sms_1_sent", "sms_2_sent", "call_triggered", "call_triggered"]);
     assert.deepEqual(
       listEvents(debtor.id).map((event) => event.eventType),
       [
@@ -67,8 +62,6 @@ describe("debtor state machine", () => {
         "SMS_2_SENT",
         "PAYMENT_CHECK_NO_MATCH",
         "CALL_TRIGGERED",
-        "PAYMENT_MATCHED",
-        "DEBT_CLOSED",
       ],
     );
   });
@@ -181,7 +174,13 @@ describe("agent tick reliability", () => {
       amountCents: 3200,
     });
 
-    for (let i = 0; i < 5; i++) {
+    const payment = submitDemoPayment({
+      reference: debtor.paymentReference,
+      amountCents: debtor.amountCents,
+    });
+    assert.equal(payment.ok, true);
+
+    for (let i = 0; i < 2; i++) {
       agentTick({ debtorId: debtor.id });
     }
 
@@ -219,9 +218,11 @@ describe("agent tick reliability", () => {
       amountCents: 3200,
     });
 
-    for (let i = 0; i < 5; i++) {
-      agentTick({ debtorId: debtor.id });
-    }
+    const payment = submitDemoPayment({
+      reference: debtor.paymentReference,
+      amountCents: debtor.amountCents,
+    });
+    assert.equal(payment.ok, true);
 
     const result = agentTick();
     assert.equal(result.ok, true);
@@ -239,5 +240,71 @@ describe("agent tick reliability", () => {
     const stateAfter = listDebtors().map((d) => d.state);
     const advancedCount = stateAfter.filter((s) => s !== "created").length;
     assert.equal(advancedCount, 1);
+  });
+});
+
+describe("payment reconciliation", () => {
+  it("scores an exact incoming payment at 100 and closes the debtor", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const result = submitDemoPayment({
+      reference: "SAM-DISH-32",
+      amountCents: 3200,
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) {
+      return;
+    }
+
+    assert.equal(result.match.confidence, 100);
+    assert.equal(result.match.outcome, "matched");
+    assert.equal(result.debtor.state, "closed");
+    assert.deepEqual(
+      listEvents(result.debtor.id).map((event) => event.eventType).slice(-4),
+      ["PAYMENT_SUBMITTED", "PAYMENT_CHECKED", "PAYMENT_MATCHED", "DEBT_CLOSED"],
+    );
+  });
+
+  it("keeps a correct-reference wrong-amount payment open", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const result = submitDemoPayment({
+      reference: "SAM-DISH-32",
+      amountCents: 1200,
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) {
+      return;
+    }
+
+    assert.equal(result.match.confidence, 60);
+    assert.equal(result.match.outcome, "partial_wrong_amount");
+    assert.equal(result.debtor.state, "created");
+    assert.equal(listEvents(result.debtor.id).at(-1)?.eventType, "PAYMENT_PARTIAL_WRONG_AMOUNT");
+  });
+
+  it("flags probable matches without closing", () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    assert.ok(sam);
+
+    const match = reconcileDemoPayment(sam, {
+      id: "payment-1",
+      debtorId: sam.id,
+      reference: "WRONG-REF",
+      amountCents: 3200,
+      currency: "GBP",
+      direction: "incoming",
+      createdAt: new Date().toISOString(),
+    });
+
+    assert.equal(match.confidence, 60);
+    assert.equal(match.outcome, "probable_match");
   });
 });

@@ -7,8 +7,6 @@ const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
   created: "sms_1_sent",
   sms_1_sent: "sms_2_sent",
   sms_2_sent: "call_triggered",
-  call_triggered: "payment_matched",
-  payment_matched: "closed",
 };
 
 export type AgentTickInput = {

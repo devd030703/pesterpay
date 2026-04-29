@@ -107,7 +107,11 @@ function eventStatusInfo(type: EventLogEntry["eventType"]) {
     SMS_1_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L1" },
     SMS_2_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L2" },
     CALL_TRIGGERED: { color: "text-[var(--pp-lime)]", label: "VOX:CALL_L3" },
+    PAYMENT_SUBMITTED: { color: "text-[var(--pp-lime)]", label: "FIN:SUBMIT" },
+    PAYMENT_CHECKED: { color: "text-[var(--pp-lime)]", label: "FIN:CHECK" },
     PAYMENT_CHECK_NO_MATCH: { color: "text-[var(--pp-text-dim)]", label: "FIN:NO_PAY" },
+    PAYMENT_PARTIAL_WRONG_AMOUNT: { color: "text-[var(--pp-amber)]", label: "FIN:AMOUNT" },
+    PAYMENT_PROBABLE_MATCH: { color: "text-[var(--pp-amber)]", label: "FIN:REVIEW" },
     PAYMENT_MATCHED: { color: "text-[var(--pp-green)]", label: "FIN:MATCHED" },
     DEBT_CLOSED: { color: "text-[var(--pp-green)]", label: "SYS:CLOSED" },
     DEBTOR_PAUSED: { color: "text-[var(--pp-text-dim)]", label: "SYS:PAUSED" },
@@ -379,7 +383,11 @@ export default function Home() {
                       <dl className="mt-6 space-y-3">
                         <div className="flex items-center justify-between border-t border-[var(--pp-border)] pt-3 text-[11px]">
                           <dt className="font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">Reference</dt>
-                          <dd className="font-mono font-bold text-[var(--pp-text)]">{debtor.paymentReference}</dd>
+                          <dd className="font-mono font-bold text-[var(--pp-text)]">
+                            <a className="text-[var(--pp-lime)] hover:text-[var(--pp-green)]" href={`/pay/${debtor.paymentReference}`}>
+                              {debtor.paymentReference}
+                            </a>
+                          </dd>
                         </div>
                         <div className="flex items-center justify-between border-t border-[var(--pp-border)] pt-3 text-[11px]">
                           <dt className="font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">Last Contact</dt>

@@ -2,9 +2,9 @@ import { logEvent } from "./events";
 import type { Debtor, DebtorState, EventLogEntry, EventType } from "./models";
 
 export const validDebtorTransitions: Record<DebtorState, DebtorState[]> = {
-  created: ["sms_1_sent", "paused", "disputed"],
-  sms_1_sent: ["sms_2_sent", "paused", "disputed"],
-  sms_2_sent: ["call_triggered", "paused", "disputed"],
+  created: ["sms_1_sent", "payment_matched", "paused", "disputed"],
+  sms_1_sent: ["sms_2_sent", "payment_matched", "paused", "disputed"],
+  sms_2_sent: ["call_triggered", "payment_matched", "paused", "disputed"],
   call_triggered: ["payment_matched", "paused", "disputed"],
   payment_matched: ["closed"],
   closed: [],
