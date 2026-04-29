@@ -1,114 +1,233 @@
-# PesterPay / Social Debt Agent — Agent Instructions
+# PesterPay Agent Guide
+
+Use this file as the fast context window for coding agents. Keep changes demo-first, deterministic, and easy to verify.
 
 ## Mission
 
-Build a hackathon demo called PesterPay, also known as the Social Debt Agent.
+Build PesterPay, the **Social Debt Agent** hackathon demo.
 
-It is an autonomous payment operations agent for informal debt. The user enters one natural-language expense, and the system splits the debt, chases debtors, logs events, reconciles payment, and stops chasing once paid.
+One-line product: an AI-powered repayment agent that splits informal debts, chases people across SMS and voice, tracks payment through Starling, and stops automatically when the correct amount is received.
 
-## Product Principle
+## Start Here
 
-This is not a generic chatbot.
+1. Read [README.md](README.md) for setup, commands, and product scope.
+2. Read [docs/architecture.md](docs/architecture.md) before touching state, payments, or integrations.
+3. Read [docs/build-plan.md](docs/build-plan.md) before choosing what to implement next.
 
-The deterministic state machine controls all financial/payment logic.
-The LLM/Ollama only generates communication copy.
-pest
-If Ollama fails, use template fallbacks.
+## Product Flow
 
-## Demo Scenario
+Demo expense:
 
-Expense:
 - Dinner at Dishoom
-- Total: £96
+- Total: GBP 96
 - Paid by: Dev
 - Debtors: Lucia, Hamza, Sam
-- £32 each
-- Demo payment reference format: SAM-DISH-32
+- Split: GBP 32 each
+- Demo payment reference: `SAM-DISH-32`
 
-Core demo flow:
+Core flow:
+
 1. User creates expense from natural language.
 2. App parses expense and creates debtor records.
 3. Dashboard shows debtor cards.
-4. Agent tick sends SMS 1.
+4. **Agent Tick** sends SMS 1.
 5. Next tick checks payment.
-6. If not paid, sends SMS 2.
+6. If unpaid, send SMS 2.
 7. Next tick triggers voice call.
 8. Demo payment page or manual button marks payment found.
 9. Payment confidence score is shown.
-10. Debtor moves to payment_matched then closed.
+10. Debtor moves to `payment_matched`, then `closed`.
 11. Event timeline shows every step.
+
+## Architecture Rules
+
+- This is not a generic chatbot.
+- The deterministic state machine controls financial/payment logic.
+- The agent runner advances debtors through explicit transitions.
+- Every state transition must write an event.
+- Payment reconciliation must be deterministic and auditable.
+- Use template fallbacks for every integration.
+- Keep functions small, typed, and easy to test.
+- Prefer visible working demo flow over perfect architecture.
+
+## State Machine Rules
+
+Primary lifecycle:
+
+```text
+created -> sms_1_sent -> sms_2_sent -> call_triggered -> payment_matched -> closed
+```
+
+Side states, if needed:
+
+```text
+paused
+disputed
+failed/manual_review
+```
+
+Rules:
+
+- Only deterministic code may transition state.
+- Do not skip event logging.
+- Do not close a debtor because an LLM says they paid.
+- Do not escalate beyond demo limits.
+- Keep transition reasons visible in the event timeline.
+
+## LLM / Ollama Rules
+
+Ollama may generate:
+
+- SMS copy
+- Voice call scripts
+- Friendly wording variants
+
+Ollama must never decide:
+
+- whether someone has paid
+- whether a debt is closed
+- which transition happens next
+- whether escalation should happen
+- whether a payment match is valid
+
+If Ollama fails or is unavailable, use `messageTemplates` fallbacks.
+
+## Financial Safety Rules
+
+Payment confidence scoring:
+
+| Signal | Points |
+| --- | ---: |
+| Exact amount match | +40 |
+| Exact reference match | +40 |
+| Transaction after request created | +10 |
+| Incoming transaction | +10 |
+
+Decision rules:
+
+| Score / condition | Result |
+| --- | --- |
+| `>= 80` | Auto-close / payment matched |
+| `50-79` | Probable match, manual review |
+| `< 50` | No match |
+| Correct reference + wrong amount | Partial payment |
+
+Do not represent PesterPay as a bank, regulator, solicitor, court, or legal debt collector. Do not generate abusive, threatening, illegal, or coercive debt-collection content.
+
+## Demo Rails
+
+- Demo recipient should be Sam only.
+- Max messages per debtor in demo: 3.
+- Max calls per debtor in demo: 1.
+- Integrations must fail soft and leave the demo usable.
+- Add seed/reset demo endpoints.
+- Prefer in-memory/local JSON storage until the loop works.
 
 ## Priority Order
 
-P0:
-- Dashboard
-- Create expense
-- Split into debtors
-- Debtor state machine
-- Run Agent Tick button
-- Event timeline
-- Template generated messages
-- Demo payment page `/pay/[reference]`
+| Priority | Build |
+| --- | --- |
+| P0 | Dashboard, create expense, debtor split, state machine, Agent Tick, event timeline, template messages, `/pay/[reference]` |
+| P1 | Ollama SMS/call copy, Twilio SMS, Twilio Voice, Starling Settle Up link, unique payment references |
+| P2 | Starling polling, confidence score UI, Agent Control Centre, escalation policy selector |
 
-P1:
-- Ollama SMS generation
-- Ollama call script generation
-- Twilio SMS
-- Twilio Voice
-- Starling Settle Up link
-- Unique payment references
+## Expected File Map
 
-P2:
-- Starling polling
-- Payment reconciliation confidence score
-- Agent Control Centre
-- Escalation policy selector
+Use the existing `src/` layout unless the repo moves away from it.
 
-Do not build:
+```text
+src/app/page.tsx
+src/app/expenses/new/page.tsx
+src/app/expenses/[id]/page.tsx
+src/app/pay/[reference]/page.tsx
+src/app/api/...
+src/components/DebtorCard.tsx
+src/components/EventTimeline.tsx
+src/components/AgentControlCentre.tsx
+src/components/PaymentConfidenceCard.tsx
+src/lib/stateMachine.ts
+src/lib/agent.ts
+src/lib/events.ts
+src/lib/payments.ts
+src/lib/messageTemplates.ts
+src/lib/ollama.ts
+src/lib/twilio.ts
+src/lib/starling.ts
+```
+
+## Do Not Build
+
 - Auth
 - Mobile app
 - Receipt OCR
 - Multiple banks
 - WhatsApp real integration
-- Overly complex database setup before the demo loop works
+- Complex database setup before the demo loop works
+- Generic chatbot features
+- Broad rewrites without direct demo payoff
 
-## Technical Shape
+## How To Make Changes Safely
 
-Use:
-- Next.js App Router
-- TypeScript
-- Tailwind
-- In-memory/local JSON store first if needed
-- Clean service files in `/lib`
-- API routes in `/app/api`
+- Inspect existing files first.
+- Keep patches scoped to the issue.
+- Preserve user changes in the working tree.
+- Add or update focused tests when touching deterministic logic.
+- Use clear names for states, events, and payment decisions.
+- Keep UI copy short and judge-readable.
+- Include fallback behavior in integrations.
 
-Important files expected:
-- `/lib/stateMachine.ts`
-- `/lib/agent.ts`
-- `/lib/events.ts`
-- `/lib/payments.ts`
-- `/lib/messageTemplates.ts`
-- `/lib/ollama.ts`
-- `/lib/twilio.ts`
-- `/lib/starling.ts`
+## Verification
 
-Frontend expected:
-- `/app/page.tsx`
-- `/app/expenses/new/page.tsx`
-- `/app/expenses/[id]/page.tsx`
-- `/app/pay/[reference]/page.tsx`
-- `/components/DebtorCard.tsx`
-- `/components/EventTimeline.tsx`
-- `/components/AgentControlCentre.tsx`
-- `/components/PaymentConfidenceCard.tsx`
+Use real package scripts only:
 
-## Engineering Rules
+```bash
+npm run lint
+npm run build
+```
 
-- Keep the demo reliable.
-- Prefer visible working flow over perfect architecture.
-- Every state transition must write an event.
-- Do not let LLM output control state transitions.
-- Use template fallback for every integration.
-- Add seed/reset demo endpoints.
-- Avoid hidden magic.
-- Keep functions small and testable.
+There is no test script yet. If you add tests, add a package script and document it.
+
+Manual demo verification:
+
+- Create Dishoom expense.
+- Confirm debtor cards render.
+- Run Agent Tick through SMS 1, SMS 2, call, payment matched, closed.
+- Confirm event timeline records every transition.
+- Confirm `/pay/[reference]` can trigger the demo payment path.
+- Confirm integration failures fall back to templates/manual demo controls.
+
+## Agent Assignment
+
+| Agent | Use for |
+| --- | --- |
+| PesterPay Architect | Architecture decisions, state machine changes, data model decisions, Starling reconciliation design, integration boundaries, high-leverage technical review |
+| PesterPay Builder | Implementation issues with clear acceptance criteria, routes, UI components, services, Twilio/Starling/Ollama wiring, demo buttons, bug fixes |
+| PesterPay Reviewer | Demo hardening, code review, UI/copy polish, edge cases, fallback paths, judging clarity, final presentation readiness |
+
+## Multica Issue Guidance
+
+Good Multica issues are small and verifiable:
+
+- One issue = one deliverable.
+- Include acceptance criteria.
+- Include files likely to touch.
+- Include verification commands.
+- Include demo impact.
+- Avoid vague "polish the app" issues.
+- Avoid broad architectural rewrites during hackathon mode.
+
+Suggested issue shape:
+
+```text
+Title: Build Agent Tick transition from created to sms_1_sent
+
+Agent: PesterPay Builder
+Goal: Add a deterministic Agent Tick endpoint that sends/fakes SMS 1.
+Likely files: src/lib/stateMachine.ts, src/lib/agent.ts, src/lib/events.ts, src/app/api/agent/tick/route.ts
+Acceptance criteria:
+- Created debtors move to sms_1_sent on tick.
+- Event timeline records the transition and message body.
+- Missing Twilio config uses template fallback.
+Verification: npm run lint && npm run build
+Demo impact: Dashboard can show the first visible autonomous chase step.
+```
