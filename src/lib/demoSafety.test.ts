@@ -5,6 +5,7 @@ import {
   DEMO_MAX_MESSAGES_PER_DEBTOR,
   DEMO_MAX_CALLS_PER_DEBTOR,
   isTwilioConfigured,
+  isTwilioWhatsAppConfigured,
   isOllamaConfigured,
   isStarlingConfigured,
 } from "./demoSafety";
@@ -61,6 +62,52 @@ describe("isTwilioConfigured", () => {
     process.env.TWILIO_PHONE_NUMBER = "+441234567890";
     process.env.DEMO_SAM_PHONE_NUMBER = "+447700900111";
     assert.equal(isTwilioConfigured(), true);
+  });
+});
+
+describe("isTwilioWhatsAppConfigured", () => {
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = {
+      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+      TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
+      DEMO_SAM_WHATSAPP_NUMBER: process.env.DEMO_SAM_WHATSAPP_NUMBER,
+    };
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    delete process.env.TWILIO_WHATSAPP_FROM;
+    delete process.env.DEMO_SAM_WHATSAPP_NUMBER;
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  it("returns false when WhatsApp vars are missing", () => {
+    assert.equal(isTwilioWhatsAppConfigured(), false);
+  });
+
+  it("returns false when only some WhatsApp vars are set", () => {
+    process.env.TWILIO_ACCOUNT_SID = "ACtest";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886";
+    assert.equal(isTwilioWhatsAppConfigured(), false);
+  });
+
+  it("returns true when all WhatsApp vars are set", () => {
+    process.env.TWILIO_ACCOUNT_SID = "ACtest";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886";
+    process.env.DEMO_SAM_WHATSAPP_NUMBER = "whatsapp:+447449201211";
+    assert.equal(isTwilioWhatsAppConfigured(), true);
   });
 });
 

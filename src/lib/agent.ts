@@ -4,7 +4,8 @@ import type { Debtor, DebtorState } from "./models";
 import { getDebtor, getExpense, listDebtors, saveDebtor } from "./store";
 import { generateAgentMessage } from "./ollama";
 import { transitionDebtor } from "./stateMachine";
-import { buildPublicDemoPaymentLink, sendDemoSms, type TwilioSmsResult } from "./twilio";
+import { buildPublicDemoPaymentLink } from "./twilio";
+import { sendDemoWhatsApp, type TwilioWhatsAppResult } from "./whatsapp";
 
 const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
   created: "sms_1_sent",
@@ -24,7 +25,7 @@ export type AgentTickResult =
       advanced?: boolean;
       message: string;
       generatedMessage?: string;
-      sms?: TwilioSmsResult;
+      whatsapp?: TwilioWhatsAppResult;
     }
   | {
       ok: false;
@@ -100,19 +101,19 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     },
   });
 
-  const sms =
+  const whatsapp =
     generated.channel === "sms"
-      ? await sendDemoSms({
+      ? await sendDemoWhatsApp({
           debtor,
           expense,
           generatedMessage: generated,
         })
       : undefined;
 
-  if (sms?.status === "failed") {
+  if (whatsapp?.status === "failed") {
     return {
       ok: false,
-      message: sms.message,
+      message: whatsapp.message,
     };
   }
 
@@ -124,8 +125,8 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
       actor: "deterministic_agent_tick",
       eventCountBeforeTick: listEvents(debtor.id).length,
       messageSource: generated.source,
-      twilioSmsStatus: sms?.status,
-      twilioSmsReason: sms?.status === "skipped" ? sms.reason : undefined,
+      twilioWhatsAppStatus: whatsapp?.status,
+      twilioWhatsAppReason: whatsapp?.status === "skipped" ? whatsapp.reason : undefined,
     },
   });
 
@@ -143,7 +144,7 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     debtor: result.debtor,
     advanced: true,
     generatedMessage: generated.body,
-    sms,
+    whatsapp,
     message: `Advanced debtor ${debtor.id} from ${debtor.state} to ${to}.`,
   };
 }

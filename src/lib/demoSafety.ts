@@ -14,6 +14,16 @@ export function isTwilioConfigured(): boolean {
   );
 }
 
+/** True when all Twilio WhatsApp Sandbox credentials and the opted-in demo recipient are set. */
+export function isTwilioWhatsAppConfigured(): boolean {
+  return Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_WHATSAPP_FROM &&
+      process.env.DEMO_SAM_WHATSAPP_NUMBER,
+  );
+}
+
 /** True when the Ollama base URL is set. */
 export function isOllamaConfigured(): boolean {
   return Boolean(process.env.OLLAMA_BASE_URL);
