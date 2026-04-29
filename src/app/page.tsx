@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Debtor, DebtorState, EventLogEntry } from "@/lib/models";
+import { NarratorPanel } from "@/components/NarratorPanel";
 
 type DemoState = {
   debtors: Debtor[];
@@ -352,6 +353,8 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          <NarratorPanel debtors={demoState.debtors} events={sortedEvents} />
 
           <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
             <section className="border border-[var(--pp-border)] bg-[var(--pp-panel)] p-4">
