@@ -3,12 +3,13 @@ import { describe, it } from "node:test";
 
 import { listEvents, resetEvents } from "./events";
 import { agentTick } from "./agent";
-import { createDebtor, resetDebtors } from "./store";
+import { createDebtor, listDebtors, listExpenses, resetDebtors, resetExpenses, seedDemo } from "./store";
 import { transitionDebtor } from "./stateMachine";
 
 describe("debtor state machine", () => {
   it("rejects invalid transitions without mutating the debtor", () => {
     resetDebtors();
+    resetExpenses();
     resetEvents();
 
     const debtor = createDebtor({
@@ -31,6 +32,7 @@ describe("debtor state machine", () => {
 
   it("advances a debtor through the deterministic demo lifecycle", () => {
     resetDebtors();
+    resetExpenses();
     resetEvents();
 
     const debtor = createDebtor({
@@ -45,7 +47,7 @@ describe("debtor state machine", () => {
       const result = agentTick({ debtorId: debtor.id });
       assert.equal(result.ok, true);
       if (result.ok) {
-        states.push(result.debtor.state);
+        states.push(result.debtor?.state);
       }
     }
 
@@ -69,5 +71,173 @@ describe("debtor state machine", () => {
         "DEBT_CLOSED",
       ],
     );
+  });
+});
+
+describe("seed demo", () => {
+  it("creates exactly one expense and three debtors", () => {
+    const { expense, debtors } = seedDemo();
+
+    assert.equal(listExpenses().length, 1);
+    assert.equal(listDebtors().length, 3);
+    assert.equal(expense.title, "Dinner at Dishoom");
+    assert.equal(expense.totalCents, 9600);
+    assert.equal(debtors.length, 3);
+
+    const names = debtors.map((d) => d.name).sort();
+    assert.deepEqual(names, ["Hamza", "Lucia", "Sam"]);
+
+    for (const debtor of debtors) {
+      assert.equal(debtor.amountCents, 3200);
+      assert.equal(debtor.expenseId, expense.id);
+      assert.equal(debtor.state, "created");
+    }
+  });
+
+  it("seeding twice produces exactly one expense and three debtors (no duplicates)", () => {
+    seedDemo();
+    seedDemo();
+
+    assert.equal(listExpenses().length, 1);
+    assert.equal(listDebtors().length, 3);
+  });
+
+  it("seeding after partial tick progress resets to clean state", () => {
+    const { debtors: initialDebtors } = seedDemo();
+
+    agentTick({ debtorId: initialDebtors[0].id });
+    agentTick({ debtorId: initialDebtors[0].id });
+
+    const { debtors: freshDebtors } = seedDemo();
+
+    assert.equal(listDebtors().length, 3);
+    assert.equal(listExpenses().length, 1);
+    for (const debtor of freshDebtors) {
+      assert.equal(debtor.state, "created");
+    }
+  });
+
+  it("seeding resets the event log", () => {
+    seedDemo();
+    const eventsAfterFirstSeed = listEvents().length;
+    assert.ok(eventsAfterFirstSeed > 0);
+
+    seedDemo();
+    const eventsAfterSecondSeed = listEvents().length;
+    assert.equal(eventsAfterSecondSeed, eventsAfterFirstSeed);
+  });
+
+  it("canonical payment references are correct", () => {
+    const { debtors } = seedDemo();
+    const refs = new Set(debtors.map((d) => d.paymentReference));
+    assert.ok(refs.has("SAM-DISH-32"));
+    assert.ok(refs.has("LUCIA-DISH-32"));
+    assert.ok(refs.has("HAMZA-DISH-32"));
+  });
+});
+
+describe("reset demo", () => {
+  it("clears all debtors, expenses, and events", () => {
+    seedDemo();
+    assert.ok(listDebtors().length > 0);
+    assert.ok(listExpenses().length > 0);
+    assert.ok(listEvents().length > 0);
+
+    resetDebtors();
+    resetExpenses();
+    resetEvents();
+
+    assert.equal(listDebtors().length, 0);
+    assert.equal(listExpenses().length, 0);
+    assert.equal(listEvents().length, 0);
+  });
+
+  it("re-seeding after reset produces a clean canonical scenario", () => {
+    seedDemo();
+    resetDebtors();
+    resetExpenses();
+    resetEvents();
+
+    const { expense, debtors } = seedDemo();
+    assert.equal(listExpenses().length, 1);
+    assert.equal(listDebtors().length, 3);
+    assert.equal(expense.title, "Dinner at Dishoom");
+    for (const debtor of debtors) {
+      assert.equal(debtor.state, "created");
+    }
+  });
+});
+
+describe("agent tick reliability", () => {
+  it("does not advance closed debtors", () => {
+    resetDebtors();
+    resetExpenses();
+    resetEvents();
+
+    const debtor = createDebtor({
+      expenseId: "expense-closed",
+      name: "Sam",
+      phone: "+447700900111",
+      amountCents: 3200,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      agentTick({ debtorId: debtor.id });
+    }
+
+    const closedDebtor = listDebtors().find((d) => d.id === debtor.id);
+    assert.equal(closedDebtor?.state, "closed");
+
+    const eventCountBeforeExtraTick = listEvents(debtor.id).length;
+    const result = agentTick({ debtorId: debtor.id });
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.advanced, false);
+    }
+    assert.equal(listEvents(debtor.id).length, eventCountBeforeExtraTick);
+  });
+
+  it("returns ok: false when debtorId is specified but not found", () => {
+    resetDebtors();
+    resetExpenses();
+    resetEvents();
+
+    const result = agentTick({ debtorId: "non-existent-id" });
+    assert.equal(result.ok, false);
+  });
+
+  it("returns ok: true with resolved message when all debtors are closed", () => {
+    resetDebtors();
+    resetExpenses();
+    resetEvents();
+
+    const debtor = createDebtor({
+      expenseId: "expense-all-closed",
+      name: "Sam",
+      phone: "+447700900111",
+      amountCents: 3200,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      agentTick({ debtorId: debtor.id });
+    }
+
+    const result = agentTick();
+    assert.equal(result.ok, true);
+    assert.ok(result.message.includes("resolved"));
+  });
+
+  it("tick advances exactly one debtor per call when multiple are advanceable", () => {
+    const { debtors } = seedDemo();
+
+    const stateBefore = debtors.map((d) => d.state);
+    assert.deepEqual(stateBefore, ["created", "created", "created"]);
+
+    agentTick();
+
+    const stateAfter = listDebtors().map((d) => d.state);
+    const advancedCount = stateAfter.filter((s) => s !== "created").length;
+    assert.equal(advancedCount, 1);
   });
 });

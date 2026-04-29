@@ -1,8 +1,9 @@
 import { nanoid } from "nanoid";
-import { logEvent } from "./events";
-import type { Debtor } from "./models";
+import { logEvent, resetEvents } from "./events";
+import type { Debtor, Expense } from "./models";
 
 const debtors = new Map<string, Debtor>();
+const expenses = new Map<string, Expense>();
 
 export type CreateDebtorInput = {
   expenseId: string;
@@ -38,7 +39,7 @@ export function createDebtor(input: CreateDebtorInput): Debtor {
     entityType: "debtor",
     entityId: debtor.id,
     eventType: "DEBTOR_CREATED",
-    message: `Debtor ${debtor.name} created for demo expense.`,
+    message: `Debtor ${debtor.name} created, owes £${debtor.amountCents / 100} (ref: ${debtor.paymentReference}).`,
     metadata: {
       expenseId: debtor.expenseId,
       amountCents: debtor.amountCents,
@@ -67,34 +68,97 @@ export function resetDebtors(): void {
   debtors.clear();
 }
 
-export function seedDemoDebtors(): Debtor[] {
-  if (debtors.size > 0) {
-    return listDebtors();
-  }
+export type CreateExpenseInput = {
+  title: string;
+  totalCents: number;
+  currency?: Expense["currency"];
+  paidBy: string;
+};
 
-  const expenseId = `demo-dishoom-${nanoid(6)}`;
+export function createExpense(input: CreateExpenseInput): Expense {
+  const expense: Expense = {
+    id: nanoid(),
+    title: input.title,
+    totalCents: input.totalCents,
+    currency: input.currency ?? "GBP",
+    paidBy: input.paidBy,
+    createdAt: new Date().toISOString(),
+  };
 
-  return [
+  expenses.set(expense.id, expense);
+  logEvent({
+    entityType: "expense",
+    entityId: expense.id,
+    eventType: "EXPENSE_CREATED",
+    message: `Expense created: ${expense.title}, £${expense.totalCents / 100}.`,
+    metadata: {
+      title: expense.title,
+      totalCents: expense.totalCents,
+      currency: expense.currency,
+      paidBy: expense.paidBy,
+    },
+  });
+
+  return expense;
+}
+
+export function listExpenses(): Expense[] {
+  return [...expenses.values()];
+}
+
+export function resetExpenses(): void {
+  expenses.clear();
+}
+
+export type SeedDemoResult = {
+  expense: Expense;
+  debtors: Debtor[];
+};
+
+/**
+ * Resets all state then seeds the canonical Dishoom demo scenario.
+ * Always resets first — calling seed twice produces one clean scenario.
+ */
+export function seedDemo(): SeedDemoResult {
+  resetDebtors();
+  resetExpenses();
+  resetEvents();
+
+  const expense = createExpense({
+    title: "Dinner at Dishoom",
+    totalCents: 9600,
+    currency: "GBP",
+    paidBy: "Dev",
+  });
+
+  const created = [
     createDebtor({
-      expenseId,
+      expenseId: expense.id,
       name: "Sam",
       phone: "+447700900111",
       amountCents: 3200,
       paymentReference: "SAM-DISH-32",
     }),
     createDebtor({
-      expenseId,
+      expenseId: expense.id,
       name: "Lucia",
       phone: "+447700900112",
       amountCents: 3200,
       paymentReference: "LUCIA-DISH-32",
     }),
     createDebtor({
-      expenseId,
+      expenseId: expense.id,
       name: "Hamza",
       phone: "+447700900113",
       amountCents: 3200,
       paymentReference: "HAMZA-DISH-32",
     }),
   ];
+
+  return { expense, debtors: created };
+}
+
+/** @deprecated Use seedDemo() */
+export function seedDemoDebtors(): Debtor[] {
+  return seedDemo().debtors;
 }

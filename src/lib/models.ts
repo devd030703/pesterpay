@@ -1,3 +1,12 @@
+export type Expense = {
+  id: string;
+  title: string;
+  totalCents: number;
+  currency: "GBP" | "USD";
+  paidBy: string;
+  createdAt: string;
+};
+
 export const debtorStates = [
   "created",
   "sms_1_sent",
@@ -26,6 +35,7 @@ export type Debtor = {
 };
 
 export const eventTypes = [
+  "EXPENSE_CREATED",
   "DEBTOR_CREATED",
   "SMS_1_SENT",
   "SMS_2_SENT",
@@ -42,7 +52,7 @@ export type EventType = (typeof eventTypes)[number];
 
 export type EventLogEntry = {
   id: string;
-  entityType: "debtor";
+  entityType: "expense" | "debtor";
   entityId: string;
   eventType: EventType;
   message: string;

@@ -1,12 +1,14 @@
 import { resetEvents } from "@/lib/events";
-import { resetDebtors } from "@/lib/store";
+import { resetDebtors, resetExpenses } from "@/lib/store";
 
 export async function POST() {
   resetDebtors();
+  resetExpenses();
   resetEvents();
 
   return Response.json({
     ok: true,
+    expenses: [],
     debtors: [],
     events: [],
   });

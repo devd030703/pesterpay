@@ -1,21 +1,12 @@
 import { listEvents } from "@/lib/events";
-import { seedDemoDebtors } from "@/lib/store";
+import { seedDemo } from "@/lib/store";
 
 export async function POST() {
-  const debtors = seedDemoDebtors();
+  const { expense, debtors } = seedDemo();
 
   return Response.json({
+    expense,
     debtors,
     events: listEvents(),
   });
 }
-
-export async function GET() {
-  const debtors = seedDemoDebtors();
-
-  return Response.json({
-    debtors,
-    events: listEvents(),
-  });
-}
-

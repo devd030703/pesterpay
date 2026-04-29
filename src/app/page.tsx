@@ -102,6 +102,7 @@ function metadataRows(metadata?: Record<string, unknown>) {
 
 function eventStatusInfo(type: EventLogEntry["eventType"]) {
   const map: Record<EventLogEntry["eventType"], { color: string; label: string }> = {
+    EXPENSE_CREATED: { color: "text-[var(--pp-text-muted)]", label: "EXPENSE" },
     DEBTOR_CREATED: { color: "text-[var(--pp-text-muted)]", label: "INIT" },
     SMS_1_SENT: { color: "text-[var(--pp-amber)]", label: "SMS" },
     SMS_2_SENT: { color: "text-[var(--pp-amber)]", label: "SMS" },

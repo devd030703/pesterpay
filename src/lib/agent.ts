@@ -42,10 +42,10 @@ export function agentTick(input: AgentTickInput = {}): AgentTickResult {
     : debtors.find((candidate) => coreDemoAdvance[candidate.state]);
 
   if (!debtor) {
-    return {
-      ok: true,
-      message: "All debts are successfully resolved.",
-    };
+    if (input.debtorId) {
+      return { ok: false, message: `Debtor ${input.debtorId} not found.` };
+    }
+    return { ok: true, message: "All debts are successfully resolved." };
   }
 
   const to = coreDemoAdvance[debtor.state];
