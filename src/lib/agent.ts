@@ -1,9 +1,10 @@
 import { listEvents, logEvent } from "./events";
-import { buildDemoPaymentLink, type MessagePolicy } from "./messageTemplates";
+import { type MessagePolicy } from "./messageTemplates";
 import type { Debtor, DebtorState } from "./models";
 import { getDebtor, getExpense, listDebtors, saveDebtor } from "./store";
 import { generateAgentMessage } from "./ollama";
 import { transitionDebtor } from "./stateMachine";
+import { buildPublicDemoPaymentLink, sendDemoSms, type TwilioSmsResult } from "./twilio";
 
 const coreDemoAdvance: Partial<Record<DebtorState, DebtorState>> = {
   created: "sms_1_sent",
@@ -23,6 +24,7 @@ export type AgentTickResult =
       advanced?: boolean;
       message: string;
       generatedMessage?: string;
+      sms?: TwilioSmsResult;
     }
   | {
       ok: false;
@@ -79,7 +81,7 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     debtor,
     expense,
     escalationLevel: to === "sms_1_sent" ? 1 : to === "sms_2_sent" ? 2 : to === "call_triggered" ? 3 : debtor.escalationLevel,
-    paymentLink: buildDemoPaymentLink(debtor.paymentReference),
+    paymentLink: buildPublicDemoPaymentLink(debtor.paymentReference),
     policy: input.policy,
     channel: to === "call_triggered" ? "call_script" : "sms",
   });
@@ -98,6 +100,22 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     },
   });
 
+  const sms =
+    generated.channel === "sms"
+      ? await sendDemoSms({
+          debtor,
+          expense,
+          generatedMessage: generated,
+        })
+      : undefined;
+
+  if (sms?.status === "failed") {
+    return {
+      ok: false,
+      message: sms.message,
+    };
+  }
+
   const result = transitionDebtor({
     debtor,
     to,
@@ -106,6 +124,8 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
       actor: "deterministic_agent_tick",
       eventCountBeforeTick: listEvents(debtor.id).length,
       messageSource: generated.source,
+      twilioSmsStatus: sms?.status,
+      twilioSmsReason: sms?.status === "skipped" ? sms.reason : undefined,
     },
   });
 
@@ -123,6 +143,7 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     debtor: result.debtor,
     advanced: true,
     generatedMessage: generated.body,
+    sms,
     message: `Advanced debtor ${debtor.id} from ${debtor.state} to ${to}.`,
   };
 }

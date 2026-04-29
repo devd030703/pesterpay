@@ -60,9 +60,13 @@ describe("debtor state machine", () => {
       [
         "DEBTOR_CREATED",
         "MESSAGE_GENERATED",
+        "TWILIO_SMS_SEND_ATTEMPTED",
+        "TWILIO_SMS_SKIPPED_NON_DEMO_RECIPIENT",
         "SMS_1_SENT",
         "PAYMENT_CHECK_NO_MATCH",
         "MESSAGE_GENERATED",
+        "TWILIO_SMS_SEND_ATTEMPTED",
+        "TWILIO_SMS_SKIPPED_NON_DEMO_RECIPIENT",
         "SMS_2_SENT",
         "PAYMENT_CHECK_NO_MATCH",
         "MESSAGE_GENERATED",
@@ -149,9 +153,13 @@ describe("message generation", () => {
     assert.equal(result.ok ? result.generatedMessage?.includes("SAM-DISH-32") : false, true);
 
     const events = listEvents(sam.id);
-    assert.equal(events.at(-2)?.eventType, "MESSAGE_GENERATED");
+    const generatedIndex = events.findIndex((event) => event.eventType === "MESSAGE_GENERATED");
+    const transitionIndex = events.findIndex((event) => event.eventType === "SMS_1_SENT");
+    assert.ok(generatedIndex > -1);
+    assert.ok(transitionIndex > generatedIndex);
+    assert.equal(events[generatedIndex].eventType, "MESSAGE_GENERATED");
     assert.equal(events.at(-1)?.eventType, "SMS_1_SENT");
-    assert.equal(events.at(-2)?.metadata?.policy, "corporate_collections");
+    assert.equal(events[generatedIndex].metadata?.policy, "corporate_collections");
   });
 });
 
