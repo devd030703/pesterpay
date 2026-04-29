@@ -16,27 +16,43 @@ export type GenerateAgentMessageOptions = {
 };
 
 function buildPrompt(input: MessageGenerationInput, fallback: GeneratedMessage): string {
+  const amount = fallback.body.match(/£[0-9]+(?:\.[0-9]{2})?/)?.[0] ?? input.debtor.amountCents;
+  const expenseName = input.expense?.title ?? "Dinner at Dishoom";
+  const ref = input.debtor.paymentReference;
+  const link = input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`;
+
   return [
-    "Write one safe SMS-style repayment reminder for PesterPay.",
+    "Write one safe SMS-style repayment reminder for PesterPay. The tone should be funny, mildly chaotic, and highly pressuring, like a cheeky but relentlessly persistent friend.",
     "The deterministic state machine already decided this message should exist.",
     "Do not decide payment status, escalation, closure, or whether to send.",
+    "Return ONLY the WhatsApp/SMS message body.",
+    "Do not wrap the message in quotation marks.",
     "Keep it under 280 characters.",
-    "Include the exact amount, expense reason, payment reference, and payment link.",
+    "Must include the exact amount.",
+    "Must include the exact expense name.",
+    "Must include the exact payment reference.",
+    "Must include the exact payment link.",
     "Avoid threats, harassment, blackmail, slurs, legal claims, public shaming, and impersonating a bank, regulator, solicitor, or debt collector.",
     `Debtor: ${input.debtor.name}`,
-    `Amount: ${fallback.body.match(/£[0-9]+(?:\.[0-9]{2})?/)?.[0] ?? input.debtor.amountCents}`,
-    `Expense: ${input.expense?.title ?? "Dinner at Dishoom"}`,
-    `Reference: ${input.debtor.paymentReference}`,
-    `Payment link: ${input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`}`,
+    `Amount: ${amount}`,
+    `Expense: ${expenseName}`,
+    `Reference: ${ref}`,
+    `Payment link: ${link}`,
     `Policy: ${fallback.policy}`,
     `Escalation level: ${fallback.escalationLevel}`,
-    "Return only the message body.",
+    `Example: Hey ${input.debtor.name}! Don't forget you owe ${amount} for ${expenseName}. Ref: ${ref}. Pay: ${link}`,
   ].join("\n");
 }
 
-async function fetchOllamaMessage(input: MessageGenerationInput, fallback: GeneratedMessage, options: GenerateAgentMessageOptions) {
+type FetchOllamaResult = { ok: true; body: string } | { ok: false; reason: "ollama_unavailable" | "timeout" };
+
+async function fetchOllamaMessage(
+  input: MessageGenerationInput,
+  fallback: GeneratedMessage,
+  options: GenerateAgentMessageOptions
+): Promise<FetchOllamaResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 1200);
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 120000);
 
   try {
     const response = await fetch(`${options.ollamaUrl ?? "http://127.0.0.1:11434"}/api/generate`, {
@@ -48,20 +64,32 @@ async function fetchOllamaMessage(input: MessageGenerationInput, fallback: Gener
         stream: false,
         options: {
           temperature: 0.4,
-          num_predict: 90,
+          num_predict: 1000,
         },
       }),
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      return undefined;
+      console.error("NOT OK");
+      return { ok: false, reason: "ollama_unavailable" };
     }
 
     const payload = (await response.json()) as OllamaGenerateResponse;
-    return payload.response?.trim();
-  } catch {
-    return undefined;
+    const body = payload.response?.trim();
+    if (!body) {
+      console.error("EMPTY BODY. Payload:", payload);
+      return { ok: false, reason: "ollama_unavailable" };
+    }
+
+    console.log("Ollama body:", body);
+    return { ok: true, body };
+  } catch (err: unknown) {
+    console.error("ERR:", err);
+    if (err instanceof Error && err.name === "AbortError") {
+      return { ok: false, reason: "timeout" };
+    }
+    return { ok: false, reason: "ollama_unavailable" };
   } finally {
     clearTimeout(timeout);
   }
@@ -72,23 +100,49 @@ export async function generateAgentMessage(
   options: GenerateAgentMessageOptions = {},
 ): Promise<GeneratedMessage> {
   const fallback = generateTemplateMessage(input);
-  const body = await fetchOllamaMessage(input, fallback, options);
+  const result = await fetchOllamaMessage(input, fallback, options);
 
-  if (!body) {
-    return fallback;
+  if (!result.ok) {
+    return { ...fallback, source: "template_fallback", fallbackReason: result.reason };
   }
 
-  const normalizedBody = body.replace(/^["']|["']$/g, "").replace(/\s+/g, " ").trim();
-  const safety = validateMessageSafety(normalizedBody, input);
+  let body = result.body.replace(/^["']|["']$/g, "").replace(/\s+/g, " ").trim();
+  let wasRepaired = false;
+
+  const ref = input.debtor.paymentReference;
+  const link = input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`;
+
+  if (!body.toLowerCase().includes(ref.toLowerCase())) {
+    body = `${body} Ref: ${ref}.`;
+    wasRepaired = true;
+  }
+
+  if (!body.toLowerCase().includes(link.toLowerCase())) {
+    body = `${body} Pay: ${link}.`;
+    wasRepaired = true;
+  }
+
+  const safety = validateMessageSafety(body, input);
 
   if (!safety.valid) {
-    return fallback;
+    let reason: GeneratedMessage["fallbackReason"] = "unsafe_output";
+    if (safety.reasons.some((r) => r.includes("exceeds SMS length limit"))) {
+      reason = "too_long";
+    } else if (safety.reasons.some((r) => r.includes("missing"))) {
+      reason = "missing_required_fields";
+    }
+
+    return {
+      ...fallback,
+      source: "template_fallback",
+      fallbackReason: reason,
+    };
   }
 
   return {
     ...fallback,
-    body: normalizedBody,
-    source: "ollama",
+    body,
+    source: wasRepaired ? "ollama_repaired" : "ollama",
     safety,
   };
 }

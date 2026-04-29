@@ -1,0 +1,29 @@
+Seeding demo...
+Calling agentTick...
+ERR: [DOMException [AbortError]: This operation was aborted]
+Result: {
+  ok: true,
+  debtor: {
+    id: 'k-PDldNdfGuwwbPRvDOsf',
+    expenseId: '6rVX9kTA6-kfj0LahLPcF',
+    name: 'Sam',
+    phone: '+447700900111',
+    amountCents: 3200,
+    currency: 'GBP',
+    paymentReference: 'SAM-DISH-32',
+    escalationLevel: 1,
+    state: 'sms_1_sent',
+    createdAt: '2026-04-29T19:54:29.714Z',
+    updatedAt: '2026-04-29T19:56:30.037Z'
+  },
+  advanced: true,
+  generatedMessage: 'Tiny goblin nudge for Sam: £32 for Dinner at Dishoom is still unpaid. Use ref SAM-DISH-32. Pay: http://localhost:3000/pay/SAM-DISH-32',
+  whatsapp: {
+    status: 'sent',
+    ok: true,
+    to: 'whatsapp:+447449201211',
+    providerMessageSid: 'SM0e5caf8df14751f10f396833011439c2',
+    message: 'WhatsApp sent to opted-in demo recipient for Sam.'
+  },
+  message: 'Advanced debtor k-PDldNdfGuwwbPRvDOsf from created to sms_1_sent.'
+}

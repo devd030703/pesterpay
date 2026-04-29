@@ -136,7 +136,7 @@ describe("message generation", () => {
       },
     );
 
-    assert.equal(message.source, "template");
+    assert.equal(message.source, "template_fallback");
     assert.equal(message.safety.valid, true);
     assert.match(message.body, /£32/);
     assert.match(message.body, /Dinner at Dishoom/);

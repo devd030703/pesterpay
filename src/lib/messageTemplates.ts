@@ -22,7 +22,7 @@ export type MessageGenerationInput = {
 
 export type GeneratedMessage = {
   body: string;
-  source: "template" | "ollama";
+  source: "template" | "ollama" | "ollama_repaired" | "template_fallback";
   policy: MessagePolicy;
   channel: MessageChannel;
   escalationLevel: number;
@@ -30,6 +30,7 @@ export type GeneratedMessage = {
     valid: boolean;
     reasons: string[];
   };
+  fallbackReason?: "ollama_unavailable" | "unsafe_output" | "missing_required_fields" | "too_long" | "timeout";
 };
 
 const SMS_MAX_LENGTH = 280;

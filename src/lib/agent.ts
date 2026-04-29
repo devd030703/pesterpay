@@ -78,14 +78,21 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
   }
 
   const expense = getExpense(debtor.expenseId);
-  const generated = await generateAgentMessage({
-    debtor,
-    expense,
-    escalationLevel: to === "sms_1_sent" ? 1 : to === "sms_2_sent" ? 2 : to === "call_triggered" ? 3 : debtor.escalationLevel,
-    paymentLink: buildPublicDemoPaymentLink(debtor.paymentReference),
-    policy: input.policy,
-    channel: to === "call_triggered" ? "call_script" : "sms",
-  });
+  const generated = await generateAgentMessage(
+    {
+      debtor,
+      expense,
+      escalationLevel: to === "sms_1_sent" ? 1 : to === "sms_2_sent" ? 2 : to === "call_triggered" ? 3 : debtor.escalationLevel,
+      paymentLink: buildPublicDemoPaymentLink(debtor.paymentReference),
+      policy: input.policy,
+      channel: to === "call_triggered" ? "call_script" : "sms",
+    },
+    {
+      ollamaUrl: process.env.OLLAMA_BASE_URL,
+      model: process.env.OLLAMA_MODEL,
+      timeoutMs: 120000,
+    }
+  );
 
   logEvent({
     entityType: "debtor",
@@ -94,6 +101,7 @@ export async function agentTick(input: AgentTickInput = {}): Promise<AgentTickRe
     message: generated.body,
     metadata: {
       source: generated.source,
+      fallbackReason: generated.fallbackReason,
       policy: generated.policy,
       channel: generated.channel,
       escalationLevel: generated.escalationLevel,
