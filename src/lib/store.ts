@@ -126,6 +126,8 @@ export type CreateDemoPaymentInput = {
   amountCents: number;
   currency?: DemoPayment["currency"];
   direction?: DemoPayment["direction"];
+  source?: DemoPayment["source"];
+  externalId?: string;
   createdAt?: string;
 };
 
@@ -137,6 +139,8 @@ export function createDemoPayment(input: CreateDemoPaymentInput): DemoPayment {
     amountCents: input.amountCents,
     currency: input.currency ?? "GBP",
     direction: input.direction ?? "incoming",
+    source: input.source,
+    externalId: input.externalId,
     createdAt: input.createdAt ?? new Date().toISOString(),
   };
 
@@ -157,19 +161,27 @@ export type SeedDemoResult = {
   debtors: Debtor[];
 };
 
+export type SeedDemoInput = {
+  amountsCents?: Partial<Record<"Dev" | "Lucia" | "Hamza", number>>;
+};
+
 /**
  * Resets all state then seeds the canonical Dishoom demo scenario.
  * Always resets first — calling seed twice produces one clean scenario.
  */
-export function seedDemo(): SeedDemoResult {
+export function seedDemo(input: SeedDemoInput = {}): SeedDemoResult {
   resetDebtors();
   resetExpenses();
   resetDemoPayments();
   resetEvents();
 
+  const devAmountCents = input.amountsCents?.Dev ?? 500;
+  const luciaAmountCents = input.amountsCents?.Lucia ?? 100;
+  const hamzaAmountCents = input.amountsCents?.Hamza ?? 100;
+
   const expense = createExpense({
     title: "Dinner at Dishoom",
-    totalCents: 9600,
+    totalCents: devAmountCents + luciaAmountCents + hamzaAmountCents,
     currency: "GBP",
     paidBy: "Dev",
   });
@@ -177,24 +189,24 @@ export function seedDemo(): SeedDemoResult {
   const created = [
     createDebtor({
       expenseId: expense.id,
-      name: "Sam",
+      name: "Dev",
       phone: "+447700900111",
-      amountCents: 3200,
-      paymentReference: "SAM-DISH-32",
+      amountCents: devAmountCents,
+      paymentReference: "SAM-DISH-2",
     }),
     createDebtor({
       expenseId: expense.id,
       name: "Lucia",
       phone: "+447700900112",
-      amountCents: 3200,
-      paymentReference: "LUCIA-DISH-32",
+      amountCents: luciaAmountCents,
+      paymentReference: "LUCIA-DISH-1",
     }),
     createDebtor({
       expenseId: expense.id,
       name: "Hamza",
       phone: "+447700900113",
-      amountCents: 3200,
-      paymentReference: "HAMZA-DISH-32",
+      amountCents: hamzaAmountCents,
+      paymentReference: "HAMZA-DISH-1",
     }),
   ];
 

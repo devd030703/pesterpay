@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { Debtor, DebtorState, EventLogEntry } from "@/lib/models";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import type { Debtor, DebtorState, DemoPayment, EventLogEntry } from "@/lib/models";
 import { NarratorPanel } from "@/components/NarratorPanel";
 
 type DemoState = {
   debtors: Debtor[];
+  payments: DemoPayment[];
   events: EventLogEntry[];
 };
 
-type DemoAction = "seed" | "reset" | "tick";
+type DemoAction = "start" | "reset";
 
-const expense = {
+const defaultExpense = {
   title: "Dinner at Dishoom",
-  totalCents: 9600,
+  totalCents: 700,
   paidBy: "Dev",
+};
+
+type AmountInputs = {
+  Dev: string;
+  Lucia: string;
+  Hamza: string;
 };
 
 const stateLabels: Record<DebtorState, string> = {
@@ -93,6 +101,12 @@ function getLastContacted(debtor: Debtor, events: EventLogEntry[]) {
     .at(-1)?.createdAt;
 }
 
+function getPaidBackCents(debtor: Debtor, payments: DemoPayment[]) {
+  return payments
+    .filter((payment) => payment.debtorId === debtor.id && payment.direction === "incoming")
+    .reduce((sum, payment) => sum + payment.amountCents, 0);
+}
+
 function metadataRows(metadata?: Record<string, unknown>) {
   if (!metadata) {
     return [];
@@ -120,6 +134,15 @@ function eventStatusInfo(type: EventLogEntry["eventType"]) {
     TWILIO_WHATSAPP_SKIPPED_DEMO_LIMIT: { color: "text-[var(--pp-amber)]", label: "WA:LIMIT" },
     TWILIO_WHATSAPP_SKIPPED_NON_DEMO_RECIPIENT: { color: "text-[var(--pp-amber)]", label: "WA:DEMO_ONLY" },
     TWILIO_WHATSAPP_SKIPPED_UNSAFE_MESSAGE: { color: "text-[var(--pp-red)]", label: "WA:UNSAFE" },
+    VOICE_CALL_ATTEMPTED: { color: "text-[var(--pp-text-muted)]", label: "VOX:CHECK" },
+    VOICE_CALL_SENT: { color: "text-[var(--pp-green)]", label: "VOX:SENT" },
+    VOICE_CALL_FAILED: { color: "text-[var(--pp-red)]", label: "VOX:FAILED" },
+    VOICE_CALL_SKIPPED_NOT_CONFIGURED: { color: "text-[var(--pp-text-dim)]", label: "VOX:NO_CONFIG" },
+    VOICE_CALL_SKIPPED_DEMO_PROVIDER: { color: "text-[var(--pp-text-dim)]", label: "VOX:DEMO" },
+    VOICE_CALL_SKIPPED_DEMO_LIMIT: { color: "text-[var(--pp-amber)]", label: "VOX:LIMIT" },
+    VOICE_CALL_SKIPPED_NON_DEMO_RECIPIENT: { color: "text-[var(--pp-amber)]", label: "VOX:ALLOWLIST" },
+    VOICE_CALL_SKIPPED_UNSAFE_SCRIPT: { color: "text-[var(--pp-red)]", label: "VOX:UNSAFE" },
+    VOICE_CALL_SKIPPED_UNSUPPORTED_PROVIDER: { color: "text-[var(--pp-amber)]", label: "VOX:PROVIDER" },
     SMS_1_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L1" },
     SMS_2_SENT: { color: "text-[var(--pp-amber)]", label: "MSG:SMS_L2" },
     CALL_TRIGGERED: { color: "text-[var(--pp-lime)]", label: "VOX:CALL_L3" },
@@ -128,6 +151,9 @@ function eventStatusInfo(type: EventLogEntry["eventType"]) {
     PAYMENT_CHECK_NO_MATCH: { color: "text-[var(--pp-text-dim)]", label: "FIN:NO_PAY" },
     PAYMENT_PARTIAL_WRONG_AMOUNT: { color: "text-[var(--pp-amber)]", label: "FIN:AMOUNT" },
     PAYMENT_PROBABLE_MATCH: { color: "text-[var(--pp-amber)]", label: "FIN:REVIEW" },
+    STARLING_POLL_STARTED: { color: "text-[var(--pp-text-muted)]", label: "BANK:POLL" },
+    STARLING_POLL_FAILED: { color: "text-[var(--pp-red)]", label: "BANK:FAILED" },
+    STARLING_POLL_COMPLETED: { color: "text-[var(--pp-lime)]", label: "BANK:SETTLED" },
     PAYMENT_MATCHED: { color: "text-[var(--pp-green)]", label: "FIN:MATCHED" },
     DEBT_CLOSED: { color: "text-[var(--pp-green)]", label: "SYS:CLOSED" },
     DEBTOR_PAUSED: { color: "text-[var(--pp-text-dim)]", label: "SYS:PAUSED" },
@@ -139,9 +165,13 @@ function eventStatusInfo(type: EventLogEntry["eventType"]) {
 }
 
 export default function Home() {
-  const [demoState, setDemoState] = useState<DemoState>({ debtors: [], events: [] });
+  const [demoState, setDemoState] = useState<DemoState>({ debtors: [], payments: [], events: [] });
   const [runningAction, setRunningAction] = useState<DemoAction | null>(null);
-  const [notice, setNotice] = useState("Dashboard loaded. Seed demo data to start.");
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [amountModalOpen, setAmountModalOpen] = useState(false);
+  const [amountInputs, setAmountInputs] = useState<AmountInputs>({ Dev: "5.00", Lucia: "1.00", Hamza: "1.00" });
+  const [notice, setNotice] = useState("Dashboard loaded. Enter amounts to start.");
+  const cycleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const sortedEvents = useMemo(
     () =>
@@ -159,6 +189,11 @@ export default function Home() {
   const activeDebtCents = demoState.debtors
     .filter((debtor) => debtor.state !== "closed")
     .reduce((sum, debtor) => sum + debtor.amountCents, 0);
+  const expectedTotalCents = currentExpenseActive
+    ? demoState.debtors.reduce((sum, debtor) => sum + debtor.amountCents, 0)
+    : defaultExpense.totalCents;
+  const recoveryProgressPercent =
+    expectedTotalCents > 0 ? Math.round(((expectedTotalCents - activeDebtCents) / expectedTotalCents) * 100) : 0;
   const overallStatus =
     demoState.debtors.length === 0
       ? "No demo loaded"
@@ -169,17 +204,96 @@ export default function Home() {
           : "Collecting";
   const latestEvent = sortedEvents.at(-1);
 
+  const stopDemoTimer = useCallback(() => {
+    if (cycleTimerRef.current) {
+      clearInterval(cycleTimerRef.current);
+      cycleTimerRef.current = null;
+    }
+    setDemoRunning(false);
+  }, []);
+
+  const applyDemoPayload = useCallback((payload: DemoState) => {
+    setDemoState({
+      debtors: payload.debtors ?? [],
+      payments: payload.payments ?? [],
+      events: payload.events ?? [],
+    });
+  }, []);
+
+  const runAgentCycle = useCallback(async () => {
+    const response = await fetch("/api/agent/tick", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const payload = (await response.json()) as DemoState & { ok?: boolean; advanced?: boolean; message?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.message ?? "Agent cycle failed.");
+    }
+
+    applyDemoPayload(payload);
+
+    const canAdvance = (payload.debtors ?? []).some((debtor) =>
+      ["created", "sms_1_sent", "sms_2_sent"].includes(debtor.state),
+    );
+
+    if (!payload.advanced && !canAdvance) {
+      stopDemoTimer();
+      setNotice(payload.message ?? "Demo automation complete.");
+      return;
+    }
+
+    setNotice(payload.message ?? "Agent cycle complete.");
+  }, [applyDemoPayload, stopDemoTimer]);
+
+  function parseAmountInput(value: string) {
+    if (value.trim() === "") {
+      return undefined;
+    }
+
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return undefined;
+    }
+    return Math.round(amount * 100);
+  }
+
+  function buildAmountPayload() {
+    const dev = parseAmountInput(amountInputs.Dev);
+    const lucia = parseAmountInput(amountInputs.Lucia);
+    const hamza = parseAmountInput(amountInputs.Hamza);
+
+    if (dev === undefined || lucia === undefined || hamza === undefined) {
+      return undefined;
+    }
+
+    return {
+      Dev: dev,
+      Lucia: lucia,
+      Hamza: hamza,
+    };
+  }
+
   async function runAction(action: DemoAction) {
     setRunningAction(action);
     setNotice("Running demo action...");
 
     try {
-      const endpoint =
-        action === "seed" ? "/api/demo/seed" : action === "reset" ? "/api/demo/reset" : "/api/agent/tick";
+      if (action === "reset") {
+        stopDemoTimer();
+      }
+
+      const endpoint = action === "start" ? "/api/demo/seed" : "/api/demo/reset";
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: action === "tick" ? JSON.stringify({}) : undefined,
+        body:
+          action === "start"
+            ? JSON.stringify({
+                amountsCents: buildAmountPayload(),
+              })
+            : undefined,
       });
       const payload = (await response.json()) as DemoState & { ok?: boolean; message?: string };
 
@@ -187,22 +301,47 @@ export default function Home() {
         throw new Error(payload.message ?? "Demo action failed.");
       }
 
-      setDemoState({
-        debtors: payload.debtors ?? [],
-        events: payload.events ?? [],
-      });
-      setNotice(
-        action === "seed"
-          ? "Seeded Dinner at Dishoom."
-          : action === "reset"
-            ? "Demo state reset."
-            : payload.message ?? "Agent tick complete.",
-      );
+      applyDemoPayload(payload);
+
+      if (action === "start") {
+        if (cycleTimerRef.current) {
+          clearInterval(cycleTimerRef.current);
+        }
+        setDemoRunning(true);
+        setAmountModalOpen(false);
+        setNotice("Demo started. Agent cycles run every 5 seconds.");
+        let isRunning = false;
+        cycleTimerRef.current = setInterval(() => {
+          if (isRunning) return;
+          isRunning = true;
+          runAgentCycle()
+            .catch((error) => {
+              stopDemoTimer();
+              setNotice(error instanceof Error ? error.message : "Agent cycle failed.");
+            })
+            .finally(() => {
+              isRunning = false;
+            });
+        }, 5000);
+      } else {
+        setNotice("Demo state reset.");
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Demo action failed.");
     } finally {
       setRunningAction(null);
     }
+  }
+
+  function handleStartDemo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!buildAmountPayload()) {
+      setNotice("Enter valid repayment amounts for Dev, Lucia, and Hamza.");
+      return;
+    }
+
+    void runAction("start");
   }
 
   useEffect(() => {
@@ -212,19 +351,21 @@ export default function Home() {
       .then((response) => response.json())
       .then((nextState: DemoState) => {
         if (active) {
-          setDemoState(nextState);
+          applyDemoPayload(nextState);
         }
       })
       .catch(() => {
         if (active) {
-          setNotice("Dashboard loaded. Seed demo data to start.");
+          setNotice("Dashboard loaded. Enter amounts to start.");
         }
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [applyDemoPayload]);
+
+  useEffect(() => stopDemoTimer, [stopDemoTimer]);
 
   return (
     <main className="min-h-screen bg-[var(--pp-bg)] px-6 py-6 font-mono text-[var(--pp-text)]">
@@ -243,24 +384,12 @@ export default function Home() {
               <button
                 className="w-full border border-[var(--pp-lime)] px-3 py-3 text-left text-sm font-bold text-[var(--pp-lime)] hover:bg-[var(--pp-lime)] hover:text-black disabled:cursor-wait disabled:opacity-50"
                 disabled={runningAction !== null}
-                onClick={() => runAction("seed")}
+                onClick={() => setAmountModalOpen(true)}
               >
-                [1] Seed Demo Data
+                [1] Enter Amounts
               </button>
               <p className="mt-1 px-1 text-[10px] leading-tight text-[var(--pp-text-dim)] uppercase">
-                Initialize &quot;Dinner at Dishoom&quot; scenario (£96, 3 debtors)              </p>
-            </div>
-
-            <div>
-              <button
-                className="w-full border border-[var(--pp-border-strong)] px-3 py-3 text-left text-sm font-bold hover:border-[var(--pp-text)] disabled:cursor-wait disabled:opacity-50"
-                disabled={runningAction !== null || !currentExpenseActive}
-                onClick={() => runAction("tick")}
-              >
-                [2] Run Agent Cycle
-              </button>
-              <p className="mt-1 px-1 text-[10px] leading-tight text-[var(--pp-text-dim)] uppercase">
-                Trigger the next autonomous recovery action
+                Set the amount each person needs to pay back, then start automation
               </p>
             </div>
 
@@ -284,7 +413,7 @@ export default function Home() {
               <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--pp-lime)]">System Monitor</div>
             </div>
             <p className="text-sm font-bold leading-relaxed text-[var(--pp-text)]">
-              {notice}
+              {demoRunning ? `${notice} Next cycle in 5 seconds.` : notice}
             </p>
           </div>
 
@@ -311,12 +440,12 @@ export default function Home() {
             <div className="mt-6 border-t border-[var(--pp-border)] pt-5">
               <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[var(--pp-text-dim)]">
                 <span>Total Recovery Progress</span>
-                <span className="text-[var(--pp-green)]">{Math.round(((expense.totalCents - activeDebtCents) / expense.totalCents) * 100)}%</span>
+                <span className="text-[var(--pp-green)]">{recoveryProgressPercent}%</span>
               </div>
               <div className="h-2 w-full overflow-hidden bg-[var(--pp-border)]">
                 <div
                   className="h-full bg-[var(--pp-green)] shadow-[0_0_10px_rgba(0,230,118,0.4)] transition-all duration-700 ease-out"
-                  style={{ width: `${Math.round(((expense.totalCents - activeDebtCents) / expense.totalCents) * 100)}%` }}
+                  style={{ width: `${recoveryProgressPercent}%` }}
                 />
               </div>
             </div>
@@ -329,18 +458,18 @@ export default function Home() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-[var(--pp-text-dim)]">Target Expense</p>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight">
-                  {currentExpenseActive ? expense.title : "Agent Standby"}
+                  {currentExpenseActive ? defaultExpense.title : "Agent Standby"}
                 </h2>
                 <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--pp-text-muted)]">
                   {currentExpenseActive
-                    ? `PesterPay is actively recovering funds for "${expense.title}", originally paid by ${expense.paidBy}. Monitoring ${demoState.debtors.length} debtors for payment reconciliation.`
-                    : "System ready. Seed the Dishoom demo to observe the autonomous debt collection lifecycle in action."}
+                    ? `PesterPay is actively recovering funds for "${defaultExpense.title}", originally paid by ${defaultExpense.paidBy}. Monitoring ${demoState.debtors.length} debtors for payment reconciliation.`
+                    : "System ready. Enter repayment amounts to observe the autonomous debt collection lifecycle in action."}
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div className="min-w-28 border border-[var(--pp-border)] p-3">
                   <p className="text-[var(--pp-text-dim)] uppercase text-[10px] font-bold">Total Bill</p>
-                  <p className="mt-1 text-lg font-bold">{currentExpenseActive ? formatMoney(expense.totalCents) : "--"}</p>
+                  <p className="mt-1 text-lg font-bold">{currentExpenseActive ? formatMoney(expectedTotalCents) : "--"}</p>
                 </div>
                 <div className="min-w-28 border border-[var(--pp-border)] p-3">
                   <p className="text-[var(--pp-text-dim)] uppercase text-[10px] font-bold">Targets</p>
@@ -368,7 +497,7 @@ export default function Home() {
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--pp-text-dim)]">No Active Debtors</p>
                   <p className="mt-2 text-sm text-[var(--pp-text-muted)]">Initialize the system to begin autonomous recovery.</p>
                   <div className="mt-6 h-px w-12 bg-[var(--pp-border-strong)]"></div>
-                  <p className="mt-6 text-[10px] uppercase text-[var(--pp-text-dim)]">Awaiting &quot;Seed Demo Data&quot; command</p>
+                  <p className="mt-6 text-[10px] uppercase text-[var(--pp-text-dim)]">Awaiting &quot;Enter Amounts&quot; command</p>
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
@@ -384,6 +513,21 @@ export default function Home() {
                         <span className={`border px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${stateTone(debtor.state)}`}>
                           {stateLabels[debtor.state]}
                         </span>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-2">
+                        <div className="border border-[var(--pp-border)] bg-[var(--pp-bg-soft)] p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">Paid Back</p>
+                          <p className="mt-1 text-lg font-bold tracking-tight text-[var(--pp-green)]">
+                            {formatMoney(getPaidBackCents(debtor, demoState.payments), debtor.currency)}
+                          </p>
+                        </div>
+                        <div className="border border-[var(--pp-border)] bg-[var(--pp-bg-soft)] p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">Remaining</p>
+                          <p className="mt-1 text-lg font-bold tracking-tight text-[var(--pp-amber)]">
+                            {formatMoney(Math.max(debtor.amountCents - getPaidBackCents(debtor, demoState.payments), 0), debtor.currency)}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="mt-6">
@@ -402,7 +546,7 @@ export default function Home() {
                         <div className="flex items-center justify-between border-t border-[var(--pp-border)] pt-3 text-[11px]">
                           <dt className="font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">Reference</dt>
                           <dd className="font-mono font-bold text-[var(--pp-text)]">
-                            <a className="text-[var(--pp-lime)] hover:text-[var(--pp-green)]" href={`/pay/${debtor.paymentReference}`}>
+                            <a className="text-[var(--pp-lime)] hover:text-[var(--pp-green)]" href="https://settleup.starlingbank.com/samuel-hollis-994d22" target="_blank" rel="noopener noreferrer">
                               {debtor.paymentReference}
                             </a>
                           </dd>
@@ -480,6 +624,61 @@ export default function Home() {
           </div>
         </section>
       </div>
+      {amountModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <form
+            className="w-full max-w-md border border-[var(--pp-border-strong)] bg-[var(--pp-panel)] p-5 shadow-2xl"
+            onSubmit={handleStartDemo}
+          >
+            <div className="mb-5">
+              <p className="text-xs font-bold uppercase tracking-widest text-[var(--pp-lime)]">Demo Setup</p>
+              <h2 className="mt-2 text-xl font-bold tracking-tight">Enter Amounts</h2>
+            </div>
+
+            <div className="grid gap-3">
+              {(["Dev", "Lucia", "Hamza"] as const).map((name) => (
+                <label className="grid gap-1" key={name}>
+                  <span className="text-[10px] font-bold uppercase tracking-tight text-[var(--pp-text-dim)]">
+                    {name}
+                  </span>
+                  <input
+                    className="border border-[var(--pp-border)] bg-[var(--pp-bg)] px-3 py-2 font-mono text-sm text-[var(--pp-text)] outline-none focus:border-[var(--pp-lime)]"
+                    min="0"
+                    onChange={(event) =>
+                      setAmountInputs((current) => ({
+                        ...current,
+                        [name]: event.target.value,
+                      }))
+                    }
+                    required
+                    step="0.01"
+                    type="number"
+                    value={amountInputs[name]}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                className="border border-[var(--pp-border-strong)] px-3 py-3 text-left text-sm font-bold hover:border-[var(--pp-text)] disabled:cursor-wait disabled:opacity-50"
+                disabled={runningAction !== null}
+                onClick={() => setAmountModalOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="border border-[var(--pp-lime)] px-3 py-3 text-left text-sm font-bold text-[var(--pp-lime)] hover:bg-[var(--pp-lime)] hover:text-black disabled:cursor-wait disabled:opacity-50"
+                disabled={runningAction !== null}
+                type="submit"
+              >
+                Start Demo
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }

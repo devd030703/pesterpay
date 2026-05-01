@@ -6,29 +6,29 @@ import { buildPublicDemoPaymentLink } from "./twilio";
 
 export type TwilioWhatsAppResult =
   | {
-      status: "sent";
-      ok: true;
-      message: string;
-      to: string;
-      providerMessageSid?: string;
-    }
+    status: "sent";
+    ok: true;
+    message: string;
+    to: string;
+    providerMessageSid?: string;
+  }
   | {
-      status: "skipped";
-      ok: true;
-      message: string;
-      reason:
-        | "twilio_whatsapp_not_configured"
-        | "demo_message_limit_reached"
-        | "non_demo_recipient"
-        | "unsafe_message";
-    }
+    status: "skipped";
+    ok: true;
+    message: string;
+    reason:
+    | "twilio_whatsapp_not_configured"
+    | "demo_message_limit_reached"
+    | "non_demo_recipient"
+    | "unsafe_message";
+  }
   | {
-      status: "failed";
-      ok: false;
-      message: string;
-      reason: "twilio_whatsapp_request_failed";
-      providerStatus?: number;
-    };
+    status: "failed";
+    ok: false;
+    message: string;
+    reason: "twilio_whatsapp_request_failed";
+    providerStatus?: number;
+  };
 
 export type SendDemoWhatsAppInput = {
   debtor: Debtor;
@@ -49,8 +49,8 @@ const skippedEventTypes: Record<Extract<TwilioWhatsAppResult, { status: "skipped
   unsafe_message: "TWILIO_WHATSAPP_SKIPPED_UNSAFE_MESSAGE",
 };
 
-function isSamDemoDebtor(debtor: Debtor): boolean {
-  return debtor.name.trim().toLowerCase() === "sam" && debtor.paymentReference === "SAM-DISH-32";
+function isPrimaryDemoDebtor(debtor: Debtor): boolean {
+  return debtor.name.trim().toLowerCase() === "dev" && debtor.paymentReference === "SAM-DISH-2";
 }
 
 function countSentWhatsAppMessagesForDebtor(debtorId: string): number {
@@ -119,8 +119,8 @@ export async function sendDemoWhatsApp(input: SendDemoWhatsAppInput): Promise<Tw
     return { status: "skipped", ok: true, reason: "unsafe_message", message };
   }
 
-  if (!isSamDemoDebtor(debtor)) {
-    const message = `WhatsApp skipped for ${debtor.name}: live demo sending is restricted to Sam.`;
+  if (!isPrimaryDemoDebtor(debtor)) {
+    const message = `WhatsApp skipped for ${debtor.name}: live demo sending is restricted to Dev.`;
     logWhatsAppSkipped(debtor, "non_demo_recipient", message);
     return { status: "skipped", ok: true, reason: "non_demo_recipient", message };
   }

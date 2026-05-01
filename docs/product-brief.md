@@ -17,11 +17,11 @@ PesterPay turns that into a visible workflow: debtors, payment references, follo
 | Field | Value |
 | --- | --- |
 | Expense | Dinner at Dishoom |
-| Total | GBP 96 |
+| Total | GBP 7 |
 | Paid by | Dev |
-| Debtors | Lucia, Hamza, Sam |
-| Split | GBP 32 each |
-| Demo reference | `SAM-DISH-32` |
+| Debtors | Lucia, Hamza, Dev |
+| Split | Dev GBP 5; Lucia and Hamza GBP 1 each |
+| Demo reference | `SAM-DISH-2` |
 
 ## Judge-Visible Flow
 
@@ -59,7 +59,7 @@ PesterPay turns that into a visible workflow: debtors, payment references, follo
 
 ## Safety
 
-- Demo recipient should be Sam only.
+- Demo recipient should be Dev only.
 - Max messages per debtor in demo: 3.
 - Max calls per debtor in demo: 1.
 - No abusive, threatening, illegal, or fake debt-collector content.

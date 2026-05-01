@@ -1,6 +1,12 @@
 import { logEvent } from "./events";
 import type { Debtor, DemoPayment } from "./models";
-import { createDemoPayment, getDebtorByPaymentReference, saveDebtor } from "./store";
+import {
+  fetchStarlingSettledTransactionsBetween,
+  normalizeStarlingFeedItem,
+  summarizeIncomingSettledFeedItems,
+  type StarlingFeedItem,
+} from "./starling";
+import { createDemoPayment, getDebtorByPaymentReference, listDemoPayments, saveDebtor } from "./store";
 import { transitionDebtor } from "./stateMachine";
 
 export type PaymentMatchOutcome = "matched" | "probable_match" | "no_match" | "partial_wrong_amount";
@@ -23,6 +29,8 @@ export type SubmitDemoPaymentInput = {
   reference: string;
   amountCents?: number;
   direction?: DemoPayment["direction"];
+  source?: DemoPayment["source"];
+  externalId?: string;
   createdAt?: string;
 };
 
@@ -37,6 +45,34 @@ export type SubmitDemoPaymentResult =
       ok: false;
       message: string;
     };
+
+export type ReconcileStarlingSettledTransactionsInput = {
+  minTransactionTimestamp?: string;
+  maxTransactionTimestamp?: string;
+  expectedAmountCents?: number;
+  feedItems?: StarlingFeedItem[];
+};
+
+export type ReconcileStarlingSettledTransactionsResult = {
+  ok: true;
+  window: {
+    minTransactionTimestamp: string;
+    maxTransactionTimestamp: string;
+  };
+  expectedAmountCents: number;
+  totalIncomingCents: number;
+  totalMatchesExpected: boolean;
+  incomingCount: number;
+  matchedPayments: Array<{
+    feedItemUid: string;
+    reference: string;
+    amountCents: number;
+    debtorId: string;
+    outcome: PaymentMatchOutcome;
+    confidence: number;
+  }>;
+  unmatchedFeedItemUids: string[];
+};
 
 function formatPounds(cents: number): string {
   return `£${(cents / 100).toFixed(2)}`;
@@ -141,6 +177,8 @@ export function submitDemoPayment(input: SubmitDemoPaymentInput): SubmitDemoPaym
     amountCents: input.amountCents ?? debtor.amountCents,
     currency: debtor.currency,
     direction: input.direction ?? "incoming",
+    source: input.source ?? "demo",
+    externalId: input.externalId,
     createdAt: input.createdAt,
   });
 
@@ -249,4 +287,137 @@ export function submitDemoPayment(input: SubmitDemoPaymentInput): SubmitDemoPaym
   }
 
   return { ok: true, debtor: saveDebtor(closed.debtor), payment, match };
+}
+
+function defaultStarlingWindow() {
+  const max = new Date();
+  const min = new Date(max.getTime() - 60 * 60 * 1000);
+
+  return {
+    minTransactionTimestamp: min.toISOString(),
+    maxTransactionTimestamp: max.toISOString(),
+  };
+}
+
+export async function reconcileStarlingSettledTransactions(
+  input: ReconcileStarlingSettledTransactionsInput = {},
+): Promise<ReconcileStarlingSettledTransactionsResult> {
+  const defaults = defaultStarlingWindow();
+  const window = {
+    minTransactionTimestamp: input.minTransactionTimestamp ?? defaults.minTransactionTimestamp,
+    maxTransactionTimestamp: input.maxTransactionTimestamp ?? defaults.maxTransactionTimestamp,
+  };
+
+  logEvent({
+    entityType: "expense",
+    entityId: "starling",
+    eventType: "STARLING_POLL_STARTED",
+    message: "Started read-only Starling settled transaction poll.",
+    metadata: {
+      minTransactionTimestamp: window.minTransactionTimestamp,
+      maxTransactionTimestamp: window.maxTransactionTimestamp,
+    },
+  });
+
+  let feedItems: StarlingFeedItem[];
+
+  try {
+    feedItems =
+      input.feedItems ??
+      (await fetchStarlingSettledTransactionsBetween({
+        minTransactionTimestamp: window.minTransactionTimestamp,
+        maxTransactionTimestamp: window.maxTransactionTimestamp,
+      }));
+  } catch (error) {
+    logEvent({
+      entityType: "expense",
+      entityId: "starling",
+      eventType: "STARLING_POLL_FAILED",
+      message: "Starling settled transaction poll failed; demo remains usable.",
+      metadata: {
+        error: error instanceof Error ? error.message : "Unknown Starling error",
+      },
+    });
+
+    throw error;
+  }
+
+  const summary = summarizeIncomingSettledFeedItems(feedItems);
+  const expectedAmountCents = input.expectedAmountCents ?? summary.totalIncomingCents;
+  const matchedPayments: ReconcileStarlingSettledTransactionsResult["matchedPayments"] = [];
+  const unmatchedFeedItemUids: string[] = [];
+
+  for (const item of feedItems) {
+    const candidate = normalizeStarlingFeedItem(item);
+
+    if (!candidate) {
+      unmatchedFeedItemUids.push(item.feedItemUid);
+      continue;
+    }
+
+    const debtor = getDebtorByPaymentReference(candidate.reference);
+
+    if (!debtor) {
+      unmatchedFeedItemUids.push(item.feedItemUid);
+      continue;
+    }
+
+    const alreadyRecorded = listDemoPayments().some((payment) => payment.externalId === item.feedItemUid);
+    if (alreadyRecorded) {
+      continue;
+    }
+
+    const result = submitDemoPayment({
+      reference: debtor.paymentReference,
+      amountCents: candidate.amountCents,
+      direction: candidate.direction,
+      source: "starling",
+      externalId: item.feedItemUid,
+      createdAt: candidate.createdAt,
+    });
+
+    if (!result.ok) {
+      unmatchedFeedItemUids.push(item.feedItemUid);
+      continue;
+    }
+
+    matchedPayments.push({
+      feedItemUid: item.feedItemUid,
+      reference: debtor.paymentReference,
+      amountCents: candidate.amountCents,
+      debtorId: debtor.id,
+      outcome: result.match.outcome,
+      confidence: result.match.confidence,
+    });
+  }
+
+  const totalMatchesExpected = summary.totalIncomingCents === expectedAmountCents;
+
+  logEvent({
+    entityType: "expense",
+    entityId: "starling",
+    eventType: "STARLING_POLL_COMPLETED",
+    message: `Starling poll found ${summary.incomingCount} incoming settled transaction(s), totaling ${formatPounds(summary.totalIncomingCents)}.`,
+    metadata: {
+      expectedAmountCents,
+      totalIncomingCents: summary.totalIncomingCents,
+      totalMatchesExpected,
+      matchedPayments: matchedPayments.length,
+      unmatchedFeedItems: unmatchedFeedItemUids.length,
+    },
+  });
+
+  return {
+    ok: true,
+    window: {
+      minTransactionTimestamp: window.minTransactionTimestamp,
+      maxTransactionTimestamp: window.maxTransactionTimestamp,
+    },
+    expectedAmountCents,
+    totalIncomingCents: summary.totalIncomingCents,
+    totalMatchesExpected,
+    incomingCount: summary.incomingCount,
+    matchedPayments,
+    unmatchedFeedItemUids,
+  };
 }

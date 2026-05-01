@@ -18,7 +18,7 @@ The demo is intentionally narrow. Build the reliable fake/demo loop first; add r
 
 The user enters a natural-language expense:
 
-> I paid GBP 96 for dinner at Dishoom. Split it between Lucia, Hamza and Sam.
+> I paid GBP 7 for dinner at Dishoom. Split it between Lucia, Hamza and Dev.
 
 PesterPay creates debtor records, generates payment references, sends escalating SMS/call follow-ups, checks payment status, computes a payment reconciliation confidence score, updates debtor state, and logs every step in an event timeline.
 
@@ -41,12 +41,12 @@ Demo scenario:
 | Field | Value |
 | --- | --- |
 | Expense | Dinner at Dishoom |
-| Total | GBP 96 |
+| Total | GBP 7 |
 | Paid by | Dev |
-| Debtors | Lucia, Hamza, Sam |
-| Split | GBP 32 each |
-| Demo reference | `SAM-DISH-32` |
-| Real demo recipient | Sam only |
+| Debtors | Lucia, Hamza, Dev |
+| Split | Dev GBP 5; Lucia and Hamza GBP 1 each |
+| Demo reference | `SAM-DISH-2` |
+| Real demo recipient | Dev only |
 
 ## Core Priorities
 
@@ -110,7 +110,7 @@ Decision rules:
 
 ## Demo Mode And Safety Rails
 
-- Demo recipient should be Sam only.
+- Demo recipient should be Dev only.
 - Max messages per debtor in demo: 3.
 - Max calls per debtor in demo: 1.
 - Use template fallbacks whenever Ollama, Twilio, or Starling fails.

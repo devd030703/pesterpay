@@ -6,7 +6,7 @@ import { agentTick } from "./agent";
 import { generateTemplateMessage, validateMessageSafety } from "./messageTemplates";
 import { generateAgentMessage } from "./ollama";
 import { createDebtor, listDebtors, listDemoPayments, listExpenses, resetDebtors, resetDemoPayments, resetExpenses, seedDemo } from "./store";
-import { reconcileDemoPayment, submitDemoPayment } from "./payments";
+import { reconcileDemoPayment, reconcileStarlingSettledTransactions, submitDemoPayment } from "./payments";
 import { transitionDebtor } from "./stateMachine";
 
 describe("debtor state machine", () => {
@@ -17,7 +17,7 @@ describe("debtor state machine", () => {
 
     const debtor = createDebtor({
       expenseId: "expense-1",
-      name: "Sam",
+      name: "Dev",
       phone: "+447700900111",
       amountCents: 1200,
     });
@@ -40,7 +40,7 @@ describe("debtor state machine", () => {
 
     const debtor = createDebtor({
       expenseId: "expense-1",
-      name: "Sam",
+      name: "Dev",
       phone: "+447700900111",
       amountCents: 1200,
     });
@@ -60,57 +60,90 @@ describe("debtor state machine", () => {
       [
         "DEBTOR_CREATED",
         "MESSAGE_GENERATED",
+        "TWILIO_SMS_SEND_ATTEMPTED",
+        "TWILIO_SMS_SKIPPED_NON_DEMO_RECIPIENT",
         "TWILIO_WHATSAPP_SEND_ATTEMPTED",
         "TWILIO_WHATSAPP_SKIPPED_NON_DEMO_RECIPIENT",
         "SMS_1_SENT",
         "PAYMENT_CHECK_NO_MATCH",
         "MESSAGE_GENERATED",
+        "TWILIO_SMS_SEND_ATTEMPTED",
+        "TWILIO_SMS_SKIPPED_NON_DEMO_RECIPIENT",
         "TWILIO_WHATSAPP_SEND_ATTEMPTED",
         "TWILIO_WHATSAPP_SKIPPED_NON_DEMO_RECIPIENT",
         "SMS_2_SENT",
         "PAYMENT_CHECK_NO_MATCH",
         "MESSAGE_GENERATED",
+        "VOICE_CALL_ATTEMPTED",
+        "VOICE_CALL_SKIPPED_DEMO_PROVIDER",
         "CALL_TRIGGERED",
       ],
     );
+  });
+
+  it("checks Starling repayments on tick and turns matched debtor green by closing them", async () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((candidate) => candidate.paymentReference === "SAM-DISH-2");
+    assert.ok(sam);
+
+    const result = await agentTick({
+      starlingFeedItems: [
+        {
+          feedItemUid: "feed-sam-agent-cycle",
+          amount: {
+            currency: "GBP",
+            minorUnits: 500,
+          },
+          direction: "IN",
+          reference: "SAM-DISH-2",
+          settlementTime: new Date().toISOString(),
+        },
+      ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(listDebtors().find((debtor) => debtor.id === sam.id)?.state, "closed");
+    assert.equal(result.ok ? result.starling?.matchedPayments[0]?.reference : undefined, "SAM-DISH-2");
+    assert.ok(listEvents(sam.id).some((event) => event.eventType === "PAYMENT_MATCHED"));
+    assert.ok(listEvents(sam.id).some((event) => event.eventType === "DEBT_CLOSED"));
   });
 });
 
 describe("message generation", () => {
   it("template fallback includes required payment details and stays SMS length", () => {
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const message = generateTemplateMessage({
       debtor: sam,
       expense,
       policy: "unhinged_goblin",
-      paymentLink: "/pay/SAM-DISH-32",
+      paymentLink: "/pay/SAM-DISH-2",
       escalationLevel: 1,
     });
 
     assert.equal(message.source, "template");
     assert.equal(message.safety.valid, true);
     assert.ok(message.body.length <= 280);
-    assert.match(message.body, /Sam/);
-    assert.match(message.body, /£32/);
+    assert.match(message.body, /Dev/);
+    assert.match(message.body, /£5/);
     assert.match(message.body, /Dinner at Dishoom/);
-    assert.match(message.body, /SAM-DISH-32/);
-    assert.match(message.body, /\/pay\/SAM-DISH-32/);
+    assert.match(message.body, /SAM-DISH-2/);
+    assert.match(message.body, /\/pay\/SAM-DISH-2/);
   });
 
   it("rejects unsafe generated copy that impersonates regulated collections", () => {
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const safety = validateMessageSafety(
-      "I am a debt collector bank. Pay £32 for Dinner at Dishoom with ref SAM-DISH-32 at /pay/SAM-DISH-32.",
+      "I am a debt collector bank. Pay £5 for Dinner at Dishoom with ref SAM-DISH-2 at /pay/SAM-DISH-2.",
       {
         debtor: sam,
         expense,
-        paymentLink: "/pay/SAM-DISH-32",
+        paymentLink: "/pay/SAM-DISH-2",
       },
     );
 
@@ -120,14 +153,14 @@ describe("message generation", () => {
 
   it("falls back to templates when Ollama is unavailable", async () => {
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const message = await generateAgentMessage(
       {
         debtor: sam,
         expense,
-        paymentLink: "/pay/SAM-DISH-32",
+        paymentLink: "/pay/SAM-DISH-2",
         policy: "polite_british",
       },
       {
@@ -138,19 +171,19 @@ describe("message generation", () => {
 
     assert.equal(message.source, "template_fallback");
     assert.equal(message.safety.valid, true);
-    assert.match(message.body, /£32/);
+    assert.match(message.body, /£5/);
     assert.match(message.body, /Dinner at Dishoom/);
-    assert.match(message.body, /SAM-DISH-32/);
+    assert.match(message.body, /SAM-DISH-2/);
   });
 
   it("agent tick logs generated copy before deterministic state transition", async () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const result = await agentTick({ debtorId: sam.id, policy: "corporate_collections" });
     assert.equal(result.ok, true);
-    assert.equal(result.ok ? result.generatedMessage?.includes("SAM-DISH-32") : false, true);
+    assert.equal(result.ok ? result.generatedMessage?.includes("SAM-DISH-2") : false, true);
 
     const events = listEvents(sam.id);
     const generatedIndex = events.findIndex((event) => event.eventType === "MESSAGE_GENERATED");
@@ -170,14 +203,20 @@ describe("seed demo", () => {
     assert.equal(listExpenses().length, 1);
     assert.equal(listDebtors().length, 3);
     assert.equal(expense.title, "Dinner at Dishoom");
-    assert.equal(expense.totalCents, 9600);
+    assert.equal(expense.totalCents, 700);
     assert.equal(debtors.length, 3);
 
     const names = debtors.map((d) => d.name).sort();
-    assert.deepEqual(names, ["Hamza", "Lucia", "Sam"]);
+    assert.deepEqual(names, ["Dev", "Hamza", "Lucia"]);
+
+    const expectedAmounts = new Map([
+      ["Dev", 500],
+      ["Lucia", 100],
+      ["Hamza", 100],
+    ]);
 
     for (const debtor of debtors) {
-      assert.equal(debtor.amountCents, 3200);
+      assert.equal(debtor.amountCents, expectedAmounts.get(debtor.name));
       assert.equal(debtor.expenseId, expense.id);
       assert.equal(debtor.state, "created");
     }
@@ -189,6 +228,21 @@ describe("seed demo", () => {
 
     assert.equal(listExpenses().length, 1);
     assert.equal(listDebtors().length, 3);
+  });
+
+  it("can seed the demo with custom repayment amounts", () => {
+    const { expense, debtors } = seedDemo({
+      amountsCents: {
+        Dev: 750,
+        Lucia: 1250,
+        Hamza: 250,
+      },
+    });
+
+    assert.equal(expense.totalCents, 2250);
+    assert.equal(debtors.find((debtor) => debtor.name === "Dev")?.amountCents, 750);
+    assert.equal(debtors.find((debtor) => debtor.name === "Lucia")?.amountCents, 1250);
+    assert.equal(debtors.find((debtor) => debtor.name === "Hamza")?.amountCents, 250);
   });
 
   it("seeding after partial tick progress resets to clean state", async () => {
@@ -219,9 +273,9 @@ describe("seed demo", () => {
   it("canonical payment references are correct", () => {
     const { debtors } = seedDemo();
     const refs = new Set(debtors.map((d) => d.paymentReference));
-    assert.ok(refs.has("SAM-DISH-32"));
-    assert.ok(refs.has("LUCIA-DISH-32"));
-    assert.ok(refs.has("HAMZA-DISH-32"));
+    assert.ok(refs.has("SAM-DISH-2"));
+    assert.ok(refs.has("LUCIA-DISH-1"));
+    assert.ok(refs.has("HAMZA-DISH-1"));
   });
 });
 
@@ -259,6 +313,66 @@ describe("reset demo", () => {
   });
 });
 
+describe("Starling reconciliation", () => {
+  it("sums incoming settled feed items in the last-hour response and closes exact reference matches", async () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
+    assert.ok(sam);
+
+    const result = await reconcileStarlingSettledTransactions({
+      expectedAmountCents: 500,
+      minTransactionTimestamp: "2026-04-30T10:00:00.000Z",
+      maxTransactionTimestamp: "2026-04-30T11:00:00.000Z",
+      feedItems: [
+        {
+          feedItemUid: "feed-sam-1",
+          amount: {
+            currency: "GBP",
+            minorUnits: 500,
+          },
+          direction: "IN",
+          reference: "SAM-DISH-2",
+          settlementTime: "2026-04-30T10:20:00.000Z",
+        },
+      ],
+    });
+
+    assert.equal(result.totalIncomingCents, 500);
+    assert.equal(result.totalMatchesExpected, true);
+    assert.equal(result.matchedPayments.length, 1);
+    assert.equal(result.matchedPayments[0].outcome, "matched");
+    assert.equal(listDebtors().find((debtor) => debtor.id === sam.id)?.state, "closed");
+    assert.equal(listEvents().at(-1)?.eventType, "STARLING_POLL_COMPLETED");
+  });
+
+  it("reports total mismatch without closing a wrong-amount reference match", async () => {
+    const { debtors } = seedDemo();
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
+    assert.ok(sam);
+
+    const result = await reconcileStarlingSettledTransactions({
+      expectedAmountCents: 500,
+      feedItems: [
+        {
+          feedItemUid: "feed-sam-short",
+          amount: {
+            currency: "GBP",
+            minorUnits: 1200,
+          },
+          direction: "IN",
+          reference: "SAM-DISH-2",
+          settlementTime: new Date().toISOString(),
+        },
+      ],
+    });
+
+    assert.equal(result.totalIncomingCents, 1200);
+    assert.equal(result.totalMatchesExpected, false);
+    assert.equal(result.matchedPayments[0].outcome, "partial_wrong_amount");
+    assert.equal(listDebtors().find((debtor) => debtor.id === sam.id)?.state, "created");
+  });
+});
+
 describe("agent tick reliability", () => {
   it("does not advance closed debtors", async () => {
     resetDebtors();
@@ -267,9 +381,9 @@ describe("agent tick reliability", () => {
 
     const debtor = createDebtor({
       expenseId: "expense-closed",
-      name: "Sam",
+      name: "Dev",
       phone: "+447700900111",
-      amountCents: 3200,
+      amountCents: 500,
     });
 
     const payment = submitDemoPayment({
@@ -311,9 +425,9 @@ describe("agent tick reliability", () => {
 
     const debtor = createDebtor({
       expenseId: "expense-all-closed",
-      name: "Sam",
+      name: "Dev",
       phone: "+447700900111",
-      amountCents: 3200,
+      amountCents: 500,
     });
 
     const payment = submitDemoPayment({
@@ -344,12 +458,12 @@ describe("agent tick reliability", () => {
 describe("payment reconciliation", () => {
   it("scores an exact incoming payment at 100 and closes the debtor", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const result = submitDemoPayment({
-      reference: "SAM-DISH-32",
-      amountCents: 3200,
+      reference: "SAM-DISH-2",
+      amountCents: 500,
     });
 
     assert.equal(result.ok, true);
@@ -368,11 +482,11 @@ describe("payment reconciliation", () => {
 
   it("keeps a correct-reference wrong-amount payment open", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const result = submitDemoPayment({
-      reference: "SAM-DISH-32",
+      reference: "SAM-DISH-2",
       amountCents: 1200,
     });
 
@@ -389,14 +503,14 @@ describe("payment reconciliation", () => {
 
   it("flags probable matches without closing", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const match = reconcileDemoPayment(sam, {
       id: "payment-1",
       debtorId: sam.id,
       reference: "WRONG-REF",
-      amountCents: 3200,
+      amountCents: 500,
       currency: "GBP",
       direction: "incoming",
       createdAt: new Date().toISOString(),
@@ -408,14 +522,14 @@ describe("payment reconciliation", () => {
 
   it("wrong reference and wrong amount scores no_match", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const match = reconcileDemoPayment(sam, {
       id: "payment-2",
       debtorId: sam.id,
       reference: "WRONG-REF",
-      amountCents: 100,
+      amountCents: 250,
       currency: "GBP",
       direction: "incoming",
       createdAt: new Date().toISOString(),
@@ -427,12 +541,12 @@ describe("payment reconciliation", () => {
 
   it("outgoing exact payment does not close the debtor", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
     const result = submitDemoPayment({
-      reference: "SAM-DISH-32",
-      amountCents: 3200,
+      reference: "SAM-DISH-2",
+      amountCents: 500,
       direction: "outgoing",
     });
 
@@ -445,17 +559,17 @@ describe("payment reconciliation", () => {
 
   it("second exact payment to a closed debtor does not double-close", () => {
     const { debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-32");
+    const sam = debtors.find((debtor) => debtor.paymentReference === "SAM-DISH-2");
     assert.ok(sam);
 
-    const first = submitDemoPayment({ reference: "SAM-DISH-32", amountCents: 3200 });
+    const first = submitDemoPayment({ reference: "SAM-DISH-2", amountCents: 500 });
     assert.equal(first.ok, true);
     if (!first.ok) return;
     assert.equal(first.debtor.state, "closed");
 
     const eventCountAfterFirst = listEvents(sam.id).length;
 
-    const second = submitDemoPayment({ reference: "SAM-DISH-32", amountCents: 3200 });
+    const second = submitDemoPayment({ reference: "SAM-DISH-2", amountCents: 500 });
     assert.equal(second.ok, true);
     if (!second.ok) return;
     assert.equal(second.debtor.state, "closed");

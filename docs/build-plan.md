@@ -57,12 +57,12 @@ npm test
 Manual demo script:
 
 1. Start with seeded/reset state.
-2. Create: "I paid GBP 96 for dinner at Dishoom. Split it between Lucia, Hamza and Sam."
-3. Confirm Lucia, Hamza, and Sam owe GBP 32 each.
-4. Run Agent Tick until Sam reaches SMS 1, SMS 2, call triggered.
-5. Open `/pay/SAM-DISH-32` or use manual payment found.
+2. Create: "I paid GBP 7 for dinner at Dishoom. Split it between Lucia, Hamza and Dev."
+3. Confirm Dev owes GBP 5, and Lucia and Hamza owe GBP 1 each.
+4. Run Agent Tick until Dev reaches SMS 1, SMS 2, call triggered.
+5. Open `/pay/SAM-DISH-2` or use manual payment found.
 6. Confirm confidence score explanation.
-7. Confirm Sam reaches `payment_matched`, then `closed`.
+7. Confirm Dev reaches `payment_matched`, then `closed`.
 8. Confirm the event timeline shows each step.
 
 ## Multica Issues To Prefer

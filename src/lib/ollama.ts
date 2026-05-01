@@ -19,7 +19,7 @@ function buildPrompt(input: MessageGenerationInput, fallback: GeneratedMessage):
   const amount = fallback.body.match(/£[0-9]+(?:\.[0-9]{2})?/)?.[0] ?? input.debtor.amountCents;
   const expenseName = input.expense?.title ?? "Dinner at Dishoom";
   const ref = input.debtor.paymentReference;
-  const link = input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`;
+  const link = input.paymentLink ?? "https://settleup.starlingbank.com/samuel-hollis-994d22";
 
   return [
     "Write one safe SMS-style repayment reminder for PesterPay. The tone should be chaotic, and highly pressuring, like a cheeky but relentlessly persistent friend.",
@@ -118,7 +118,7 @@ export async function generateAgentMessage(
   let wasRepaired = false;
 
   const ref = input.debtor.paymentReference;
-  const link = input.paymentLink ?? `/pay/${encodeURIComponent(input.debtor.paymentReference)}`;
+  const link = input.paymentLink ?? "https://settleup.starlingbank.com/samuel-hollis-994d22";
 
   if (!body.toLowerCase().includes(ref.toLowerCase())) {
     body = `${body} Ref: ${ref}.`;

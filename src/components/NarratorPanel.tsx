@@ -51,10 +51,10 @@ export function NarratorPanel({ debtors, events }: NarratorPanelProps) {
     const lastTickEvents = [...events].reverse().slice(0, 5);
     const skippedLucia = lastTickEvents.some(e => e.message.includes("skipped for Lucia"));
     const skippedHamza = lastTickEvents.some(e => e.message.includes("skipped for Hamza"));
-    const sentSam = lastTickEvents.some(e => e.message.includes("sent to opted-in demo recipient for Sam") || e.eventType === "TWILIO_WHATSAPP_SENT");
+    const sentDev = lastTickEvents.some(e => e.message.includes("sent to opted-in demo recipient for Dev") || e.eventType === "TWILIO_WHATSAPP_SENT");
 
-    if (sentSam && skippedLucia && skippedHamza) {
-      return "Agent generated a safe message, attempted WhatsApp only to Sam, skipped Lucia and Hamza, and is now waiting for payment.";
+    if (sentDev && skippedLucia && skippedHamza) {
+      return "Agent generated a safe message, attempted WhatsApp only to Dev, skipped Lucia and Hamza, and is now waiting for payment.";
     }
 
     if (demoPhase === "SMS_ESCALATION_L1") {
@@ -73,9 +73,9 @@ export function NarratorPanel({ debtors, events }: NarratorPanelProps) {
     const activeDebtors = debtors.filter((d) => d.state !== "closed" && d.state !== "payment_matched");
     if (activeDebtors.length === 0) return "No further actions required. All targets settled.";
 
-    const sam = activeDebtors.find((d) => d.name.toLowerCase() === "sam");
-    if (sam) {
-      return `Next agent cycle will process ${sam.name} (currently ${sam.state}).`;
+    const dev = activeDebtors.find((d) => d.name.toLowerCase() === "dev");
+    if (dev) {
+      return `Next agent cycle will process ${dev.name} (currently ${dev.state}).`;
     }
     return `Next agent cycle will process ${activeDebtors[0].name}.`;
   }, [debtors]);

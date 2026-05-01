@@ -19,11 +19,11 @@ One-line product: an AI-powered repayment agent that splits informal debts, chas
 Demo expense:
 
 - Dinner at Dishoom
-- Total: GBP 96
+- Total: GBP 7
 - Paid by: Dev
-- Debtors: Lucia, Hamza, Sam
-- Split: GBP 32 each
-- Demo payment reference: `SAM-DISH-32`
+- Debtors: Lucia, Hamza, Dev
+- Split: Dev GBP 5; Lucia and Hamza GBP 1 each
+- Demo payment reference: `SAM-DISH-2`
 
 Core flow:
 
@@ -116,7 +116,7 @@ Do not represent PesterPay as a bank, regulator, solicitor, court, or legal debt
 
 ## Demo Rails
 
-- Demo recipient should be Sam only.
+- Demo recipient should be Dev only.
 - Max messages per debtor in demo: 3 (`DEMO_MAX_MESSAGES_PER_DEBTOR` in `src/lib/demoSafety.ts`).
 - Max calls per debtor in demo: 1 (`DEMO_MAX_CALLS_PER_DEBTOR` in `src/lib/demoSafety.ts`).
 - Integrations must fail soft and leave the demo usable.

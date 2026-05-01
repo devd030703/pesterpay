@@ -71,7 +71,7 @@ export function formatMessageAmount(cents: number, currency: Debtor["currency"])
 }
 
 export function buildDemoPaymentLink(reference: string): string {
-  return `/pay/${encodeURIComponent(reference)}`;
+  return "https://settleup.starlingbank.com/samuel-hollis-994d22";
 }
 
 function normalizePolicy(policy?: MessagePolicy): MessagePolicy {

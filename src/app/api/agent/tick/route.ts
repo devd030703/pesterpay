@@ -1,7 +1,7 @@
 import { agentTick } from "@/lib/agent";
 import { listEvents } from "@/lib/events";
 import { isMessagePolicy } from "@/lib/messageTemplates";
-import { listDebtors } from "@/lib/store";
+import { listDebtors, listDemoPayments } from "@/lib/store";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     {
       ...result,
       debtors: listDebtors(),
+      payments: listDemoPayments(),
       events: listEvents(),
     },
     { status },

@@ -71,7 +71,7 @@ describe("sendDemoWhatsApp", () => {
 
   it("skips gracefully and logs when Twilio WhatsApp is not configured", async () => {
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     const result = await sendDemoWhatsApp({
@@ -93,7 +93,7 @@ describe("sendDemoWhatsApp", () => {
   it("sends only to DEMO_SAM_WHATSAPP_NUMBER when configured", async () => {
     configureWhatsAppEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     let sentBody: URLSearchParams | undefined;
@@ -118,7 +118,7 @@ describe("sendDemoWhatsApp", () => {
     assert.equal(listEvents(sam.id).some((event) => event.eventType === "TWILIO_WHATSAPP_SENT"), true);
   });
 
-  it("skips non-Sam debtors without calling Twilio", async () => {
+  it("skips non-Dev debtors without calling Twilio", async () => {
     configureWhatsAppEnv();
     const { expense, debtors } = seedDemo();
     const lucia = debtors.find((debtor) => debtor.name === "Lucia");
@@ -147,7 +147,7 @@ describe("sendDemoWhatsApp", () => {
   it("respects the demo message limit per debtor", async () => {
     configureWhatsAppEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
     let calls = 0;
 
@@ -172,7 +172,7 @@ describe("sendDemoWhatsApp", () => {
   it("counts prior SMS sends against the WhatsApp demo message limit", async () => {
     configureWhatsAppEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     for (let index = 0; index < 3; index += 1) {
@@ -203,7 +203,7 @@ describe("sendDemoWhatsApp", () => {
   it("logs a failed event when Twilio rejects the WhatsApp request", async () => {
     configureWhatsAppEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     const result = await sendDemoWhatsApp({

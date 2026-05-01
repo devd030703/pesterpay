@@ -67,7 +67,7 @@ describe("sendDemoSms", () => {
 
   it("skips gracefully and logs when Twilio is not configured", async () => {
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     const result = await sendDemoSms({
@@ -87,7 +87,7 @@ describe("sendDemoSms", () => {
   it("sends only to DEMO_SAM_PHONE_NUMBER when configured", async () => {
     configureTwilioEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     let sentBody: URLSearchParams | undefined;
@@ -111,7 +111,7 @@ describe("sendDemoSms", () => {
     assert.equal(listEvents(sam.id).some((event) => event.eventType === "TWILIO_SMS_SENT"), true);
   });
 
-  it("skips non-Sam debtors without calling Twilio", async () => {
+  it("skips non-Dev debtors without calling Twilio", async () => {
     configureTwilioEnv();
     const { expense, debtors } = seedDemo();
     const lucia = debtors.find((debtor) => debtor.name === "Lucia");
@@ -137,7 +137,7 @@ describe("sendDemoSms", () => {
   it("respects the demo SMS limit per debtor", async () => {
     configureTwilioEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
     let calls = 0;
 
@@ -162,7 +162,7 @@ describe("sendDemoSms", () => {
   it("logs a failed event when Twilio rejects the request", async () => {
     configureTwilioEnv();
     const { expense, debtors } = seedDemo();
-    const sam = debtors.find((debtor) => debtor.name === "Sam");
+    const sam = debtors.find((debtor) => debtor.name === "Dev");
     assert.ok(sam);
 
     const result = await sendDemoSms({

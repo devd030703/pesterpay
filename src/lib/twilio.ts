@@ -5,29 +5,29 @@ import type { Debtor, EventType, Expense } from "./models";
 
 export type TwilioSmsResult =
   | {
-      status: "sent";
-      ok: true;
-      message: string;
-      to: string;
-      providerMessageSid?: string;
-    }
+    status: "sent";
+    ok: true;
+    message: string;
+    to: string;
+    providerMessageSid?: string;
+  }
   | {
-      status: "skipped";
-      ok: true;
-      message: string;
-      reason:
-        | "twilio_not_configured"
-        | "demo_message_limit_reached"
-        | "non_demo_recipient"
-        | "unsafe_message";
-    }
+    status: "skipped";
+    ok: true;
+    message: string;
+    reason:
+    | "twilio_not_configured"
+    | "demo_message_limit_reached"
+    | "non_demo_recipient"
+    | "unsafe_message";
+  }
   | {
-      status: "failed";
-      ok: false;
-      message: string;
-      reason: "twilio_request_failed";
-      providerStatus?: number;
-    };
+    status: "failed";
+    ok: false;
+    message: string;
+    reason: "twilio_request_failed";
+    providerStatus?: number;
+  };
 
 export type SendDemoSmsInput = {
   debtor: Debtor;
@@ -48,8 +48,8 @@ const skippedEventTypes: Record<Extract<TwilioSmsResult, { status: "skipped" }>[
   unsafe_message: "TWILIO_SMS_SKIPPED_UNSAFE_MESSAGE",
 };
 
-function isSamDemoDebtor(debtor: Debtor): boolean {
-  return debtor.name.trim().toLowerCase() === "sam" && debtor.paymentReference === "SAM-DISH-32";
+function isPrimaryDemoDebtor(debtor: Debtor): boolean {
+  return debtor.name.trim().toLowerCase() === "dev" && debtor.paymentReference === "SAM-DISH-2";
 }
 
 function countSentSmsForDebtor(debtorId: string): number {
@@ -81,9 +81,7 @@ function getTwilioCredentials() {
 }
 
 export function buildPublicDemoPaymentLink(reference: string): string {
-  const path = `/pay/${encodeURIComponent(reference)}`;
-  const baseUrl = process.env.NEXT_PUBLIC_DEMO_BASE_URL?.replace(/\/$/, "");
-  return baseUrl ? `${baseUrl}${path}` : path;
+  return "https://settleup.starlingbank.com/samuel-hollis-994d22";
 }
 
 export async function sendDemoSms(input: SendDemoSmsInput): Promise<TwilioSmsResult> {
@@ -117,8 +115,8 @@ export async function sendDemoSms(input: SendDemoSmsInput): Promise<TwilioSmsRes
     return { status: "skipped", ok: true, reason: "unsafe_message", message };
   }
 
-  if (!isSamDemoDebtor(debtor)) {
-    const message = `SMS skipped for ${debtor.name}: live demo sending is restricted to Sam.`;
+  if (!isPrimaryDemoDebtor(debtor)) {
+    const message = `SMS skipped for ${debtor.name}: live demo sending is restricted to Dev.`;
     logSmsSkipped(debtor, "non_demo_recipient", message);
     return { status: "skipped", ok: true, reason: "non_demo_recipient", message };
   }
